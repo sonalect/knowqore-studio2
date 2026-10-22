@@ -16,6 +16,8 @@ export interface LessonsQuery {
   direction: SortDirection;
   offset: number;
   limit: number;
+  /** The key of a tree node: only the Lessons under it. `null` is every Lesson. */
+  node: string | null;
 }
 
 /**
@@ -46,6 +48,29 @@ export interface LessonsPage {
  */
 export function lessonsPage(query: LessonsQuery): Promise<LessonsPage> {
   return invoke<LessonsPage>("lessons_page", { query });
+}
+
+/**
+ * A node of the tree of the Vault's containers: a kind of source, or a
+ * prefix of the container ids (host, owner, repository). `lessons` counts
+ * the distinct Lessons seen under it; `key` is what `LessonsQuery.node` takes.
+ */
+export interface LessonTreeNode {
+  key: string;
+  label: string;
+  lessons: number;
+  children: LessonTreeNode[];
+}
+
+/** `containers` is the number of distinct containers the Lessons name. */
+export interface LessonTree {
+  containers: number;
+  nodes: LessonTreeNode[];
+}
+
+/** Reads the tree of containers; a failure rejects with the store's error as a string. */
+export function lessonTree(): Promise<LessonTree> {
+  return invoke<LessonTree>("lesson_tree");
 }
 
 const UPDATED_FORMAT = new Intl.DateTimeFormat(undefined, {

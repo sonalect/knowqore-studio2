@@ -1,4 +1,5 @@
 import { AppShell } from "@astryxdesign/core/AppShell";
+import { Badge } from "@astryxdesign/core/Badge";
 import { BreadcrumbItem, Breadcrumbs } from "@astryxdesign/core/Breadcrumbs";
 import { Card } from "@astryxdesign/core/Card";
 import { Divider } from "@astryxdesign/core/Divider";
@@ -17,39 +18,44 @@ import {
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { Toolbar } from "@astryxdesign/core/Toolbar";
-import { TreeList } from "@astryxdesign/core/TreeList";
+import { TreeList, type TreeListItemData } from "@astryxdesign/core/TreeList";
 import * as stylex from "@stylexjs/stylex";
 import {
   BookOpen,
   Clock,
+  Folder,
   FolderGit2,
   Layers,
   Library,
   Settings,
   X,
 } from "lucide-react";
-import { useState } from "react";
-import { formatUpdated, type LessonRow } from "../lessons";
+import { useEffect, useMemo, useState } from "react";
+import {
+  formatUpdated,
+  type LessonRow,
+  type LessonTree,
+  type LessonTreeNode,
+  lessonTree,
+} from "../lessons";
 import type { OpenWorkspace } from "../workspace";
 import { LessonsTable } from "./LessonsTable";
 
-// Placeholder branches of the tree on the left.
-const SOURCES = [
-  { label: "Source A", topics: ["Topic 1", "Topic 2"] },
-  { label: "Source B", topics: ["Topic 3"] },
-];
-
 const NUMBER = new Intl.NumberFormat();
 
-// Summary tiles above the table; only the Lessons count is real yet.
-function summary(total: number | null) {
+// Summary tiles above the table; the last update is not shown yet.
+function summary(total: number | null, containers: number | null) {
   return [
     {
       label: "Lessons",
       value: total === null ? "—" : NUMBER.format(total),
       icon: BookOpen,
     },
-    { label: "Sources", value: "—", icon: FolderGit2 },
+    {
+      label: "Sources",
+      value: containers === null ? "—" : NUMBER.format(containers),
+      icon: FolderGit2,
+    },
     { label: "Last update", value: "—", icon: Clock },
   ];
 }
@@ -61,6 +67,45 @@ const styles = stylex.create({
     height: "100%",
   },
 });
+
+/** The nodes from the kind down to the one with `key`, or none when no node has it. */
+function pathTo(nodes: LessonTreeNode[], key: string): LessonTreeNode[] {
+  for (const node of nodes) {
+    if (node.key === key) return [node];
+    const below = pathTo(node.children, key);
+    if (below.length > 0) return [node, ...below];
+  }
+  return [];
+}
+
+/** The items of the tree list: kinds and hosts start expanded, deeper nodes collapsed. */
+function treeItems(
+  nodes: LessonTreeNode[],
+  selected: string | null,
+  choose: (key: string) => void,
+  depth = 0,
+): TreeListItemData[] {
+  return nodes.map((node) => ({
+    id: node.key,
+    label: node.label,
+    startContent: (
+      <Icon
+        icon={
+          depth === 0 ? Layers : node.children.length > 0 ? Folder : FolderGit2
+        }
+        size="sm"
+      />
+    ),
+    endContent: <Badge label={NUMBER.format(node.lessons)} />,
+    isSelected: node.key === selected,
+    isExpanded: depth < 2,
+    onClick: () => choose(node.key),
+    children:
+      node.children.length > 0
+        ? treeItems(node.children, selected, choose, depth + 1)
+        : undefined,
+  }));
+}
 
 function SummaryTile({
   label,
@@ -126,7 +171,28 @@ function LessonDetails({
 export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
   const [selected, setSelected] = useState<LessonRow | null>(null);
   const [total, setTotal] = useState<number | null>(null);
-  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+  const [node, setNode] = useState<string | null>(null);
+  // The tree, or the reason it could not be read; `null` while pending.
+  const [tree, setTree] = useState<LessonTree | string | null>(null);
+
+  useEffect(() => {
+    lessonTree().then(setTree, (reason: unknown) => setTree(String(reason)));
+  }, []);
+
+  const items = useMemo(
+    () =>
+      typeof tree === "object" && tree !== null
+        ? treeItems(tree.nodes, node, setNode)
+        : [],
+    [tree, node],
+  );
+  const path = useMemo(
+    () =>
+      node !== null && typeof tree === "object" && tree !== null
+        ? pathTo(tree.nodes, node)
+        : [],
+    [tree, node],
+  );
 
   return (
     <AppShell
@@ -157,30 +223,21 @@ export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
             <SideNavItem
               label="All Lessons"
               icon={BookOpen}
-              isSelected
-              onClick={() => {}}
+              isSelected={node === null}
+              onClick={() => setNode(null)}
             />
-            <SideNavItem label="Recent" icon={Clock} onClick={() => {}} />
           </SideNavSection>
           <SideNavSection title="Sources">
-            {/* TreeList draws the guide lines of the nesting itself. */}
-            <TreeList
-              density="compact"
-              variant="lineGuides"
-              items={SOURCES.map((source) => ({
-                id: source.label,
-                label: source.label,
-                startContent: <Icon icon={FolderGit2} size="sm" />,
-                isExpanded: true,
-                children: source.topics.map((topic) => ({
-                  id: `${source.label}/${topic}`,
-                  label: topic,
-                  startContent: <Icon icon={Layers} size="sm" />,
-                  isSelected: topic === selectedTopic,
-                  onClick: () => setSelectedTopic(topic),
-                })),
-              }))}
-            />
+            {tree === null ? (
+              <Text color="secondary">Reading the sources…</Text>
+            ) : typeof tree === "string" ? (
+              <Text color="secondary">{tree}</Text>
+            ) : tree.nodes.length === 0 ? (
+              <Text color="secondary">No sources yet.</Text>
+            ) : (
+              // TreeList draws the guide lines of the nesting itself.
+              <TreeList density="compact" variant="lineGuides" items={items} />
+            )}
           </SideNavSection>
         </SideNav>
       }
@@ -194,8 +251,27 @@ export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
             dividers={["bottom"]}
             startContent={
               <Breadcrumbs label="Location">
-                <BreadcrumbItem onClick={() => {}}>Lessons</BreadcrumbItem>
-                <BreadcrumbItem isCurrent>All Lessons</BreadcrumbItem>
+                <BreadcrumbItem onClick={() => setNode(null)}>
+                  Lessons
+                </BreadcrumbItem>
+                {path.length === 0 ? (
+                  <BreadcrumbItem isCurrent>All Lessons</BreadcrumbItem>
+                ) : (
+                  path.map((crumb, index) =>
+                    index === path.length - 1 ? (
+                      <BreadcrumbItem key={crumb.key} isCurrent>
+                        {crumb.label}
+                      </BreadcrumbItem>
+                    ) : (
+                      <BreadcrumbItem
+                        key={crumb.key}
+                        onClick={() => setNode(crumb.key)}
+                      >
+                        {crumb.label}
+                      </BreadcrumbItem>
+                    ),
+                  )
+                )}
               </Breadcrumbs>
             }
           />
@@ -204,13 +280,19 @@ export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
           <LayoutContent padding={4} isScrollable={false}>
             <VStack gap={4} height="100%">
               <Grid columns={3} gap={4}>
-                {summary(total).map((tile) => (
+                {summary(
+                  total,
+                  typeof tree === "object" && tree !== null
+                    ? tree.containers
+                    : null,
+                ).map((tile) => (
                   <SummaryTile key={tile.label} {...tile} />
                 ))}
               </Grid>
               <StackItem size="fill">
                 <Card padding={0} height="100%">
                   <LessonsTable
+                    node={node}
                     selectedId={selected?.id ?? null}
                     onSelect={setSelected}
                     onTotal={setTotal}

@@ -9,10 +9,12 @@
 //! store's own order, with no count, sort, or window. Until it has a call for
 //! that, this module stands in for it: it reads the stream once per open
 //! store, keeps of each Lesson only what a row shows ([`LessonRow`]), and
-//! sorts and cuts the windows itself. When the store answers windows,
+//! sorts, filters by a node of the tree of containers, and cuts the windows
+//! itself. When the store answers windows,
 //! `lessons_page` calls it instead, and the frontend does not change.
 
 use std::cmp::Ordering;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Mutex, PoisonError};
 
 use futures_lite::StreamExt as _;
@@ -99,7 +101,7 @@ pub enum SortDirection {
 }
 
 /// The window of rows the table asks for.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LessonsQuery {
     /// The column to sort by. Rows equal in it are ordered by id, so a sort
@@ -111,13 +113,18 @@ pub struct LessonsQuery {
     pub offset: usize,
     /// How many rows the window holds, at most [`MAX_PAGE_ROWS`].
     pub limit: usize,
+    /// The key of a node of the tree ([`LessonTreeNode::key`]): only the
+    /// Lessons seen under it are listed and counted. `None` lists every
+    /// Lesson; a key no node has lists none.
+    #[serde(default)]
+    pub node: Option<String>,
 }
 
 /// One window of sorted rows.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LessonsPage {
-    /// How many Lessons there are in all.
+    /// How many Lessons there are in all, or under the node asked for.
     pub total: usize,
     /// The position of the first row among all of them; at most `total`.
     pub offset: usize,
@@ -125,47 +132,298 @@ pub struct LessonsPage {
     pub rows: Vec<LessonRow>,
 }
 
-/// The rows of every Lesson of one store, in the last order asked for.
+/// One node of the tree of containers: a kind of source, or a prefix of the
+/// container ids of that kind split at `/` (host, owner, repository).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LessonTreeNode {
+    /// `kind:prefix`, as `git:` for a kind and `git:github.com/owner` for a
+    /// prefix; what [`LessonsQuery::node`] takes.
+    pub key: String,
+    /// The kind, or the segment this node adds to its parent's prefix.
+    pub label: String,
+    /// How many distinct Lessons are seen in a container of this kind that
+    /// is this node's prefix or under it. A Lesson seen in two repositories
+    /// of one owner counts once at the owner.
+    pub lessons: usize,
+    /// The nodes below, most Lessons first, then by label.
+    pub children: Vec<LessonTreeNode>,
+}
+
+/// The containers the Lessons are seen in, as a tree.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LessonTree {
+    /// How many distinct containers the Lessons name.
+    pub containers: usize,
+    /// The nodes of the kinds, most Lessons first, then by label.
+    pub nodes: Vec<LessonTreeNode>,
+}
+
+/// The kind of a container a Lesson names that the store does not list.
+const UNKNOWN_KIND: &str = "unknown";
+
+/// A container of a Lesson: its kind and its id split at `/`, empty
+/// segments skipped.
+#[derive(Clone, Debug)]
+struct Placed {
+    kind: String,
+    segments: Vec<String>,
+}
+
+impl Placed {
+    /// The container `id`, of the kind `kinds` lists for it.
+    fn of(id: &str, kinds: &HashMap<String, String>) -> Self {
+        Self {
+            kind: kinds
+                .get(id)
+                .cloned()
+                .unwrap_or_else(|| UNKNOWN_KIND.to_owned()),
+            segments: id
+                .split('/')
+                .filter(|segment| !segment.is_empty())
+                .map(str::to_owned)
+                .collect(),
+        }
+    }
+}
+
+/// One Lesson in the buffer: its row and the containers it is seen in.
+struct Entry {
+    row: LessonRow,
+    containers: Vec<Placed>,
+}
+
+/// The ids of the containers `lesson` is seen in: `support.origins`, or the
+/// first container when there are none, or nothing without a support. The
+/// contract's `origins` names at most five containers, so a Lesson known in
+/// more is found under its first five only, until the store answers by
+/// container.
+fn containers_of(lesson: &Lesson) -> Vec<String> {
+    let Some(support) = lesson.support.as_option() else {
+        return Vec::new();
+    };
+    if support.origins.is_empty() {
+        support.first_container.iter().cloned().collect()
+    } else {
+        support.origins.clone()
+    }
+}
+
+/// A node of the tree while it is built.
+#[derive(Default)]
+struct Trie {
+    /// The position of the last Lesson counted here, so one Lesson seen in
+    /// two containers below counts once.
+    last: Option<usize>,
+    lessons: usize,
+    children: BTreeMap<String, Trie>,
+}
+
+impl Trie {
+    /// Counts the Lesson at `index` here, once.
+    fn count(&mut self, index: usize) {
+        if self.last != Some(index) {
+            self.last = Some(index);
+            self.lessons += 1;
+        }
+    }
+
+    /// The nodes below, with the keys that start with `prefix`.
+    fn nodes(&self, kind: &str, prefix: &[&str]) -> Vec<LessonTreeNode> {
+        let mut nodes: Vec<LessonTreeNode> = self
+            .children
+            .iter()
+            .map(|(label, child)| {
+                let mut path = prefix.to_vec();
+                path.push(label);
+                LessonTreeNode {
+                    key: format!("{kind}:{}", path.join("/")),
+                    label: label.clone(),
+                    lessons: child.lessons,
+                    children: child.nodes(kind, &path),
+                }
+            })
+            .collect();
+        nodes.sort_by(|a, b| {
+            b.lessons
+                .cmp(&a.lessons)
+                .then_with(|| a.label.cmp(&b.label))
+        });
+        nodes
+    }
+}
+
+/// The tree of the containers of `entries`.
+fn build_tree(entries: &[Entry]) -> LessonTree {
+    let mut kinds: BTreeMap<&str, Trie> = BTreeMap::new();
+    let mut containers = HashSet::new();
+    for (index, entry) in entries.iter().enumerate() {
+        for placed in &entry.containers {
+            containers.insert((placed.kind.as_str(), placed.segments.as_slice()));
+            let mut node = kinds.entry(placed.kind.as_str()).or_default();
+            node.count(index);
+            for segment in &placed.segments {
+                node = node.children.entry(segment.clone()).or_default();
+                node.count(index);
+            }
+        }
+    }
+    let mut nodes: Vec<LessonTreeNode> = kinds
+        .iter()
+        .map(|(kind, trie)| LessonTreeNode {
+            key: format!("{kind}:"),
+            label: (*kind).to_owned(),
+            lessons: trie.lessons,
+            children: trie.nodes(kind, &[]),
+        })
+        .collect();
+    nodes.sort_by(|a, b| {
+        b.lessons
+            .cmp(&a.lessons)
+            .then_with(|| a.label.cmp(&b.label))
+    });
+    LessonTree {
+        containers: containers.len(),
+        nodes,
+    }
+}
+
+/// Whether `entry` is seen in a container of the node `key`: of its kind,
+/// equal to its prefix or under it.
+fn under_node(entry: &Entry, kind: &str, prefix: &[&str]) -> bool {
+    entry.containers.iter().any(|placed| {
+        placed.kind == kind
+            && placed.segments.len() >= prefix.len()
+            && placed.segments.iter().zip(prefix).all(|(a, b)| a == b)
+    })
+}
+
+/// The positions in `entries` of the Lessons under the node `key`; none for
+/// a key that is not `kind:prefix`.
+fn positions_under(entries: &[Entry], key: &str) -> Vec<usize> {
+    let Some((kind, prefix)) = key.split_once(':') else {
+        return Vec::new();
+    };
+    let prefix: Vec<&str> = prefix
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    entries
+        .iter()
+        .enumerate()
+        .filter(|(_, entry)| under_node(entry, kind, &prefix))
+        .map(|(index, _)| index)
+        .collect()
+}
+
+/// The Lessons of one store, in the last order asked for.
 struct Lessons {
-    rows: Vec<LessonRow>,
+    entries: Vec<Entry>,
     order: Option<(LessonSortKey, SortDirection)>,
+    /// The positions in `entries` of the Lessons under the last node asked
+    /// for, with its key; dropped when the order changes.
+    filtered: Option<(String, Vec<usize>)>,
+    tree: LessonTree,
 }
 
 impl Lessons {
-    fn new(rows: Vec<LessonRow>) -> Self {
-        Self { rows, order: None }
+    /// Takes each row with the ids of the containers its Lesson is seen in;
+    /// `kinds` maps a container id to its kind.
+    fn new(rows: Vec<(LessonRow, Vec<String>)>, kinds: &HashMap<String, String>) -> Self {
+        let entries: Vec<Entry> = rows
+            .into_iter()
+            .map(|(row, ids)| Entry {
+                row,
+                containers: ids.iter().map(|id| Placed::of(id, kinds)).collect(),
+            })
+            .collect();
+        let tree = build_tree(&entries);
+        Self {
+            entries,
+            order: None,
+            filtered: None,
+            tree,
+        }
     }
 
-    /// Reads the row of every Lesson of `store`, one Lesson at a time.
+    /// Reads the row of every Lesson of `store`, one Lesson at a time, and
+    /// the kind of every container the store lists.
     async fn read(store: &StoreRef) -> Result<Self, Error> {
-        let mut stream = store.to_async_offload()?.lessons(Empty::default()).await?;
+        let store = store.to_async_offload()?;
+        let mut sources = store.containers(Empty::default()).await?;
+        let mut kinds = HashMap::new();
+        while let Some(source) = sources.next().await {
+            let source = source?;
+            kinds.insert(
+                source.id.unwrap_or_default(),
+                source.kind.unwrap_or_default(),
+            );
+        }
+        let mut stream = store.lessons(Empty::default()).await?;
         let mut rows = Vec::new();
         while let Some(lesson) = stream.next().await {
-            rows.push(LessonRow::of(&lesson?));
+            let lesson = lesson?;
+            rows.push((LessonRow::of(&lesson), containers_of(&lesson)));
         }
-        Ok(Self::new(rows))
+        Ok(Self::new(rows, &kinds))
     }
 
     /// The window `query` asks for; sorts the rows first when it asks for
-    /// another order than the last one.
+    /// another order than the last one, and finds the Lessons under its node
+    /// when it asks for another node than the last one.
     fn page(&mut self, query: &LessonsQuery) -> LessonsPage {
         let order = (query.sort_key, query.direction);
         if self.order != Some(order) {
-            self.rows
-                .sort_unstable_by(|a, b| compare(a, b, query.sort_key, query.direction));
+            self.entries
+                .sort_unstable_by(|a, b| compare(&a.row, &b.row, query.sort_key, query.direction));
             self.order = Some(order);
+            self.filtered = None;
         }
-        let total = self.rows.len();
-        let start = query.offset.min(total);
-        let end = start
-            .saturating_add(query.limit.min(MAX_PAGE_ROWS))
-            .min(total);
+        let Some(key) = query.node.as_deref() else {
+            let (start, end) = window(self.entries.len(), query);
+            return LessonsPage {
+                total: self.entries.len(),
+                offset: start,
+                rows: self
+                    .entries
+                    .get(start..end)
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|entry| entry.row.clone())
+                    .collect(),
+            };
+        };
+        let stale = self.filtered.as_ref().is_none_or(|(kept, _)| kept != key);
+        if stale {
+            self.filtered = Some((key.to_owned(), positions_under(&self.entries, key)));
+        }
+        let positions = self
+            .filtered
+            .as_ref()
+            .map_or(&[][..], |(_, p)| p.as_slice());
+        let (start, end) = window(positions.len(), query);
         LessonsPage {
-            total,
+            total: positions.len(),
             offset: start,
-            rows: self.rows.get(start..end).unwrap_or_default().to_vec(),
+            rows: positions
+                .get(start..end)
+                .unwrap_or_default()
+                .iter()
+                .filter_map(|&index| self.entries.get(index))
+                .map(|entry| entry.row.clone())
+                .collect(),
         }
     }
+}
+
+/// The start and end of the window `query` asks for among `total` rows.
+fn window(total: usize, query: &LessonsQuery) -> (usize, usize) {
+    let start = query.offset.min(total);
+    let end = start
+        .saturating_add(query.limit.min(MAX_PAGE_ROWS))
+        .min(total);
+    (start, end)
 }
 
 /// The order of two rows by `key` and `direction`, then by id.
@@ -189,50 +447,80 @@ fn folded(text: &str) -> impl Iterator<Item = char> + '_ {
     text.chars().flat_map(char::to_lowercase)
 }
 
-/// The rows of the open store's Lessons, once read, with the store they were
-/// read from.
+/// The Lessons of the open store, once read, with the store they were read
+/// from.
 #[derive(Default)]
 pub struct LessonsBuffer(Mutex<Option<(StoreRef, Lessons)>>);
 
 impl LessonsBuffer {
-    /// The window of the rows read from `store`, when they are read.
-    fn page_of(&self, store: &StoreRef, query: &LessonsQuery) -> Option<LessonsPage> {
+    /// What `answer` makes of the Lessons read from `store`, when they are
+    /// read.
+    fn answer_of<T>(&self, store: &StoreRef, answer: &impl Fn(&mut Lessons) -> T) -> Option<T> {
         let mut buffer = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         match buffer.as_mut() {
-            Some((read_from, lessons)) if read_from == store => Some(lessons.page(query)),
+            Some((read_from, lessons)) if read_from == store => Some(answer(lessons)),
             _ => None,
         }
     }
 
-    /// Keeps the rows read from `store` in place of any others, and answers
-    /// the window from them.
-    fn keep(&self, store: StoreRef, mut lessons: Lessons, query: &LessonsQuery) -> LessonsPage {
-        let page = lessons.page(query);
+    /// Keeps the Lessons read from `store` in place of any others, and
+    /// answers from them.
+    fn keep<T>(
+        &self,
+        store: StoreRef,
+        mut lessons: Lessons,
+        answer: &impl Fn(&mut Lessons) -> T,
+    ) -> T {
+        let result = answer(&mut lessons);
         *self.0.lock().unwrap_or_else(PoisonError::into_inner) = Some((store, lessons));
-        page
+        result
     }
 }
 
+/// Answers from the Lessons of the open workspace's store, reading them
+/// first when this store's are not kept yet. The lock is not held while they
+/// are read. Fails with the store's error (its code first) when they cannot
+/// be read, and when no workspace is open.
+async fn answer_from<T>(
+    open_store: &OpenStore,
+    buffer: &LessonsBuffer,
+    answer: impl Fn(&mut Lessons) -> T,
+) -> Result<T, String> {
+    let Some(store) = open_store.current() else {
+        return Err("No workspace is open.".to_owned());
+    };
+    if let Some(result) = buffer.answer_of(&store, &answer) {
+        return Ok(result);
+    }
+    let lessons = Lessons::read(&store)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(buffer.keep(store, lessons, &answer))
+}
+
 /// Tauri command `lessons_page`: one sorted window of the Lessons of the open
-/// workspace and their total. The first call after a workspace opens reads
-/// the Lessons; it fails with the store's error (its code first) when they
-/// cannot be read, and when no workspace is open.
+/// workspace (or of the node of the tree asked for) and their total. The
+/// first call after a workspace opens reads the Lessons; it fails with the
+/// store's error (its code first) when they cannot be read, and when no
+/// workspace is open.
 #[tauri::command]
 pub async fn lessons_page(
     open_store: State<'_, OpenStore>,
     buffer: State<'_, LessonsBuffer>,
     query: LessonsQuery,
 ) -> Result<LessonsPage, String> {
-    let Some(store) = open_store.current() else {
-        return Err("No workspace is open.".to_owned());
-    };
-    if let Some(page) = buffer.page_of(&store, &query) {
-        return Ok(page);
-    }
-    let lessons = Lessons::read(&store)
-        .await
-        .map_err(|error| error.to_string())?;
-    Ok(buffer.keep(store, lessons, &query))
+    answer_from(&open_store, &buffer, |lessons| lessons.page(&query)).await
+}
+
+/// Tauri command `lesson_tree`: the tree of the containers the Lessons of the
+/// open workspace are seen in, with the number of Lessons under each node.
+/// Fails like `lessons_page`.
+#[tauri::command]
+pub async fn lesson_tree(
+    open_store: State<'_, OpenStore>,
+    buffer: State<'_, LessonsBuffer>,
+) -> Result<LessonTree, String> {
+    answer_from(&open_store, &buffer, |lessons| lessons.tree.clone()).await
 }
 
 /// Registers the buffer of the Lessons' rows.
@@ -242,12 +530,35 @@ pub fn manage(app: &AppHandle) {
 
 #[cfg(test)]
 mod tests {
-    use knowqore_stores::Lesson;
+    use std::collections::HashMap;
+
+    use knowqore_stores::{Lesson, Support};
 
     use super::{
         LessonRow, LessonSortKey, Lessons, LessonsQuery, MAX_PAGE_ROWS, STATEMENT_CHARS,
-        SortDirection,
+        SortDirection, containers_of,
     };
+
+    /// Rows seen in no container.
+    fn bare(rows: Vec<LessonRow>) -> Lessons {
+        Lessons::new(
+            rows.into_iter().map(|row| (row, Vec::new())).collect(),
+            &HashMap::new(),
+        )
+    }
+
+    fn git(ids: &[&str]) -> HashMap<String, String> {
+        ids.iter()
+            .map(|id| ((*id).to_owned(), "git".to_owned()))
+            .collect()
+    }
+
+    fn seen(id: &str, containers: &[&str]) -> (LessonRow, Vec<String>) {
+        (
+            row(id, id, "practice", "t"),
+            containers.iter().map(|c| (*c).to_owned()).collect(),
+        )
+    }
 
     fn row(id: &str, statement: &str, kind: &str, updated_at: &str) -> LessonRow {
         LessonRow {
@@ -262,7 +573,7 @@ mod tests {
     }
 
     fn fixture() -> Lessons {
-        Lessons::new(vec![
+        bare(vec![
             row("l3", "beta", "pitfall", "2026-10-02T00:00:00.000Z"),
             row("l1", "Alpha", "practice", "2026-10-03T00:00:00.000Z"),
             row("l2", "gamma", "practice", "2026-10-01T00:00:00.000Z"),
@@ -276,6 +587,7 @@ mod tests {
             direction,
             offset: 0,
             limit: 10,
+            node: None,
         }
     }
 
@@ -350,7 +662,7 @@ mod tests {
         let rows = (0..MAX_PAGE_ROWS + 5)
             .map(|index| row(&format!("l{index:04}"), "s", "asset", "t"))
             .collect();
-        let mut lessons = Lessons::new(rows);
+        let mut lessons = bare(rows);
         let window = LessonsQuery {
             limit: usize::MAX,
             ..query(LessonSortKey::Kind, SortDirection::Ascending)
@@ -371,5 +683,153 @@ mod tests {
 
         lesson.statement = Some("short".to_owned());
         assert_eq!(LessonRow::of(&lesson).statement, "short");
+    }
+
+    fn tree_fixture() -> Lessons {
+        let kinds = git(&[
+            "github.com/sonalect/knowqore",
+            "github.com/sonalect/scheda",
+            "github.com/amsokol/mimalloc",
+            "/gitlab.com//team/app/",
+        ]);
+        Lessons::new(
+            vec![
+                seen("l1", &["github.com/sonalect/knowqore"]),
+                seen(
+                    "l2",
+                    &["github.com/sonalect/knowqore", "github.com/sonalect/scheda"],
+                ),
+                seen("l3", &["github.com/amsokol/mimalloc"]),
+                seen("l4", &["/gitlab.com//team/app/"]),
+                seen("l5", &["elsewhere/x"]),
+                seen("l6", &[]),
+            ],
+            &kinds,
+        )
+    }
+
+    fn labels(nodes: &[super::LessonTreeNode]) -> Vec<(&str, usize)> {
+        nodes
+            .iter()
+            .map(|node| (node.label.as_str(), node.lessons))
+            .collect()
+    }
+
+    #[test]
+    fn the_tree_splits_containers_and_counts_distinct_lessons() {
+        let tree = tree_fixture().tree;
+        assert_eq!(tree.containers, 5);
+        assert_eq!(labels(&tree.nodes), [("git", 4), ("unknown", 1)]);
+        let git = &tree.nodes[0];
+        assert_eq!(git.key, "git:");
+        assert_eq!(
+            labels(&git.children),
+            [("github.com", 3), ("gitlab.com", 1)]
+        );
+        let host = &git.children[0];
+        assert_eq!(host.key, "git:github.com");
+        // l2 is in two repositories of one owner and counts once there.
+        assert_eq!(labels(&host.children), [("sonalect", 2), ("amsokol", 1)]);
+        let owner = &host.children[0];
+        assert_eq!(owner.key, "git:github.com/sonalect");
+        assert_eq!(labels(&owner.children), [("knowqore", 2), ("scheda", 1)]);
+        assert_eq!(owner.children[0].key, "git:github.com/sonalect/knowqore");
+    }
+
+    #[test]
+    fn the_tree_skips_empty_segments_and_names_unlisted_containers_unknown() {
+        let tree = tree_fixture().tree;
+        let gitlab = &tree.nodes[0].children[1];
+        assert_eq!(gitlab.children[0].key, "git:gitlab.com/team");
+        assert_eq!(
+            gitlab.children[0].children[0].key,
+            "git:gitlab.com/team/app"
+        );
+        let unknown = &tree.nodes[1];
+        assert_eq!(unknown.key, "unknown:");
+        assert_eq!(unknown.children[0].key, "unknown:elsewhere");
+    }
+
+    #[test]
+    fn a_lesson_without_origins_is_placed_by_its_first_container() {
+        let lesson = Lesson {
+            support: Support {
+                first_container: Some("github.com/a/b".to_owned()),
+                ..Support::default()
+            }
+            .into(),
+            ..Lesson::default()
+        };
+        assert_eq!(containers_of(&lesson), ["github.com/a/b"]);
+        assert!(containers_of(&Lesson::default()).is_empty());
+        let with_origins = Lesson {
+            support: Support {
+                first_container: Some("first".to_owned()),
+                origins: vec!["x/y".to_owned(), "x/z".to_owned()],
+                ..Support::default()
+            }
+            .into(),
+            ..Lesson::default()
+        };
+        assert_eq!(containers_of(&with_origins), ["x/y", "x/z"]);
+    }
+
+    fn under(node: &str) -> LessonsQuery {
+        LessonsQuery {
+            node: Some(node.to_owned()),
+            ..query(LessonSortKey::Statement, SortDirection::Ascending)
+        }
+    }
+
+    #[test]
+    fn a_node_narrows_the_page_and_its_total() {
+        let mut lessons = tree_fixture();
+        let owner = lessons.page(&under("git:github.com/sonalect"));
+        assert_eq!(owner.total, 2);
+        assert_eq!(ids_of(&owner), ["l1", "l2"]);
+        let repository = lessons.page(&under("git:github.com/sonalect/scheda"));
+        assert_eq!((repository.total, ids_of(&repository)), (1, vec!["l2"]));
+        let kind = lessons.page(&under("git:"));
+        assert_eq!(kind.total, 4);
+        let window = LessonsQuery {
+            offset: 1,
+            limit: 1,
+            ..under("git:")
+        };
+        let page = lessons.page(&window);
+        assert_eq!((page.total, page.offset, ids_of(&page)), (4, 1, vec!["l2"]));
+        let all = lessons.page(&query(LessonSortKey::Statement, SortDirection::Ascending));
+        assert_eq!(all.total, 6);
+    }
+
+    #[test]
+    fn a_new_order_keeps_the_node_filter_right() {
+        let mut lessons = tree_fixture();
+        let descending = LessonsQuery {
+            direction: SortDirection::Descending,
+            ..under("git:github.com/sonalect")
+        };
+        assert_eq!(
+            ids_of(&lessons.page(&under("git:github.com/sonalect"))),
+            ["l1", "l2"]
+        );
+        assert_eq!(ids_of(&lessons.page(&descending)), ["l2", "l1"]);
+    }
+
+    #[test]
+    fn an_unknown_node_key_gives_an_empty_page() {
+        let mut lessons = tree_fixture();
+        for key in ["git:nowhere", "nokind", "svn:"] {
+            let page = lessons.page(&under(key));
+            assert_eq!(
+                (page.total, page.offset, page.rows.len()),
+                (0, 0, 0),
+                "{key}"
+            );
+        }
+    }
+
+    fn ids_of(page: &super::LessonsPage) -> Vec<&str> {
+        page.rows.iter().map(|row| row.id.as_str()).collect()
     }
 }

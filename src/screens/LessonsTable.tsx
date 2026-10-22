@@ -110,10 +110,12 @@ function blank(id: string, marker: "placeholder" | "spacer"): Item {
 
 /** The Lessons of the Vault in a table that holds only the rows near the view. */
 export function LessonsTable({
+  node,
   selectedId,
   onSelect,
   onTotal,
 }: {
+  node: string | null;
   selectedId: string | null;
   onSelect: (row: LessonRow) => void;
   onTotal: (total: number) => void;
@@ -128,7 +130,7 @@ export function LessonsTable({
   const [viewport, setViewport] = useState(ESTIMATED_VIEWPORT);
   const [rowHeight, setRowHeight] = useState(ESTIMATED_ROW_HEIGHT);
 
-  // Bumped by every sort change: an answer of an older sort is ignored.
+  // Bumped by every sort or node change: an answer of an older one is ignored.
   const generation = useRef(0);
   // `generation:block` of every call in flight.
   const inFlight = useRef(new Set<string>());
@@ -155,6 +157,20 @@ export function LessonsTable({
   const sortKey = sort.sortKey;
   const direction = sort.direction;
 
+  // A node change starts the list over, as a sort change does; the sort stays.
+  const shownNode = useRef(node);
+  useEffect(() => {
+    if (shownNode.current === node) return;
+    shownNode.current = node;
+    generation.current += 1;
+    inFlight.current.clear();
+    loaded.current = new Map();
+    setBlocks(loaded.current);
+    setError(null);
+    scrollEl.current?.scrollTo({ top: 0 });
+    setScrollTop(0);
+  }, [node]);
+
   useEffect(() => {
     const pruned = new Map(
       [...loaded.current].filter(([block]) => block >= lo && block <= hi),
@@ -168,7 +184,13 @@ export function LessonsTable({
       const key = `${gen}:${block}`;
       if (loaded.current.has(block) || inFlight.current.has(key)) continue;
       inFlight.current.add(key);
-      lessonsPage({ sortKey, direction, offset: block * BLOCK, limit: BLOCK })
+      lessonsPage({
+        sortKey,
+        direction,
+        offset: block * BLOCK,
+        limit: BLOCK,
+        node,
+      })
         .then((page) => {
           inFlight.current.delete(key);
           if (gen !== generation.current) return;
@@ -188,7 +210,7 @@ export function LessonsTable({
           setError(String(reason));
         });
     }
-  }, [lo, hi, sortKey, direction, onTotal]);
+  }, [lo, hi, sortKey, direction, node, onTotal]);
 
   const attachScroll = useCallback((el: HTMLDivElement | null) => {
     observer.current?.disconnect();
@@ -327,7 +349,13 @@ export function LessonsTable({
     return <Text color="secondary">Reading the Lessons…</Text>;
   }
   if (total === 0) {
-    return <Text color="secondary">There are no Lessons yet.</Text>;
+    return (
+      <Text color="secondary">
+        {node === null
+          ? "There are no Lessons yet."
+          : "No Lessons are seen under this source."}
+      </Text>
+    );
   }
 
   return (

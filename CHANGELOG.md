@@ -30,6 +30,10 @@ While the major version is 0, a breaking change bumps the minor version.
   every column. It reads only the rows in view as the person scrolls, so a
   Vault of any size stays responsive, and the details card shows the
   clicked Lesson.
+- The side navigation shows the Vault's sources as a tree (kind, host,
+  owner, repository), each with the number of Lessons seen under it.
+  Choosing one lists only its Lessons, and the "Sources" tile counts the
+  Vault's containers. "All Lessons" shows every Lesson again.
 - A title bar that looks native on each system: the system's own on macOS;
   a Windows 11 caption bar on the Mica backdrop on Windows, with Snap
   Layouts on its maximize button; on Linux a bar of Studio's own with

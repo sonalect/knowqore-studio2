@@ -20,6 +20,7 @@ pub fn run() {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
+            lessons::lesson_tree,
             lessons::lessons_page,
             system_appearance::system_appearance,
             system_style::system_style,

@@ -7,6 +7,7 @@ before planning; open a note when its topic comes up.
 | Note | What it holds |
 | - | - |
 | `quarantine.md` | Dependency bumps waiting out the two-day quarantine, and when each is allowed |
+| `store-calls-wanted.md` | The paged and per-container Lesson calls the store lacks, which `lessons.rs` stands in for |
 
 ## References
 
