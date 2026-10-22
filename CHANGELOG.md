@@ -9,6 +9,25 @@ While the major version is 0, a breaking change bumps the minor version.
 
 ### Added
 
+- The details card reads the selected Lesson from the store and has three
+  tabs. Overview shows its statement in full, highlighted as Markdown, with
+  the fields of the table: kind, status, polarity, transfer, updated, and id.
+  YAML shows the whole record as the contract gives it, highlighted, with
+  long lines wrapped under their own indent. Every Lesson opens on Overview,
+  and the card changes in one step, without flashing an interim state.
+- The History tab of the details lists what happened to the Lesson, newest
+  first, read from the store with the Lesson, so the tab label shows the
+  count before the tab is opened. The writes are grouped by the run that
+  made them on one day, with the day, a colored `learn` or
+  `ingest` chip, and the run; each write shows colored events (created,
+  revision with the old and new statement, status, curator, containers,
+  evidence, your choice, amended by an agent, and more) and the tab label
+  counts them. Writes that changed nothing are hidden until a switch shows
+  them. A click on a write's id opens a dialog with the YAML diff of the
+  Lesson between that write and the version before it.
+- A divider between the table and the details card drags the card wider or
+  narrower. The card starts at 40% of the two, and its width is kept for the
+  next start, as is the width of the side navigation.
 - A filter bar above the Lessons table: Kind, Status, Transfer, and Polarity
   each take several values (a Lesson matches any value of one filter and all
   filters). Every menu shows how many Lessons under the chosen source have
@@ -16,6 +35,7 @@ While the major version is 0, a breaking change bumps the minor version.
   the filters. Controls that do not fit fold behind a "+N" button.
 - Dates follow the system's regional format and local time zone, as in
   native apps, not the interface language.
+- A retired Lesson's statement is struck through in the table.
 - The Lessons table shows the status as a badge and the kind with a colored
   dot, has a Polarity column, and puts the Lesson id under its statement.
 - The application skeleton on Tauri 2, React, and TypeScript (Vite, bun):

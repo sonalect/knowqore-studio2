@@ -23,3 +23,5 @@ ignores:
   - "dogfood/**"
   # Written by `astryx init` and rewritten by `astryx upgrade`.
   - ".claude/rules/astryx.md"
+  # Astryx sources copied by `astryx swizzle`, kept as Astryx wrote them.
+  - "src/components/astryx/**"

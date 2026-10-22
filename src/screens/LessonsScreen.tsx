@@ -2,19 +2,18 @@ import { AppShell } from "@astryxdesign/core/AppShell";
 import { Badge } from "@astryxdesign/core/Badge";
 import { BreadcrumbItem, Breadcrumbs } from "@astryxdesign/core/Breadcrumbs";
 import { Card } from "@astryxdesign/core/Card";
-import { Divider } from "@astryxdesign/core/Divider";
-import { Heading } from "@astryxdesign/core/Heading";
 import { Icon } from "@astryxdesign/core/Icon";
-import { IconButton } from "@astryxdesign/core/IconButton";
 import { Layout, LayoutContent, LayoutPanel } from "@astryxdesign/core/Layout";
 import { NavIcon } from "@astryxdesign/core/NavIcon";
+import { ResizeHandle, useResizable } from "@astryxdesign/core/Resizable";
+import { percent, pixel } from "@astryxdesign/core/Resizable/utils";
 import {
   SideNav,
   SideNavHeading,
   SideNavItem,
   SideNavSection,
 } from "@astryxdesign/core/SideNav";
-import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
+import { StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { Toolbar } from "@astryxdesign/core/Toolbar";
 import { TreeList, type TreeListItemData } from "@astryxdesign/core/TreeList";
@@ -27,11 +26,16 @@ import {
   Layers,
   Library,
   Settings,
-  X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
 import {
-  formatUpdated,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
   type LessonFilters,
   type LessonRow,
   type LessonTree,
@@ -39,8 +43,8 @@ import {
   lessonTree,
   NO_FILTERS,
 } from "../lessons";
-import { kindLook, polarityLook, statusLook } from "../lessonValues";
 import type { OpenWorkspace } from "../workspace";
+import { LessonDetails } from "./LessonDetails";
 import { LessonsFilterBar } from "./LessonsFilterBar";
 import { LessonsTable } from "./LessonsTable";
 
@@ -93,54 +97,46 @@ function treeItems(
   }));
 }
 
-function Fact({ label, value }: { label: string; value: string }) {
-  return (
-    <VStack gap={0.5}>
-      <Text color="secondary">{label}</Text>
-      <Text>{value}</Text>
-    </VStack>
-  );
-}
-
-function LessonDetails({
-  lesson,
-  onClose,
+/**
+ * The details panel beside the table, with the divider that drags it wider.
+ * It starts at 40% of the table and the panel together (`basis`) and goes up
+ * to 70%; a dragged width is kept in the webview's storage for the next start.
+ *
+ * The width is set up here, when a Lesson is first chosen, not with the
+ * screen: the screen mounts while the window still has its first size, before
+ * it is restored, and a percentage taken then is a share of that.
+ */
+function DetailsPanel({
+  basis,
+  children,
 }: {
-  lesson: LessonRow;
-  onClose: () => void;
+  basis: RefObject<HTMLDivElement | null>;
+  children: ReactNode;
 }) {
+  const width = useResizable({
+    defaultSize: percent(40, { min: pixel(320) }),
+    minSize: 320,
+    maxSize: percent(70, { min: pixel(320) }),
+    containerRef: basis,
+    autoSaveId: "lesson-details-size",
+  });
   return (
-    <Card padding={4}>
-      <VStack gap={4}>
-        <HStack gap={2} vAlign="center" hAlign="between">
-          <Heading level={3}>Lesson</Heading>
-          <IconButton
-            label="Close details"
-            size="sm"
-            variant="ghost"
-            icon={<Icon icon={X} size="sm" />}
-            onClick={onClose}
-          />
-        </HStack>
-        <Text>{lesson.statement}</Text>
-        <Divider />
-        <Fact
-          label="Kind"
-          value={kindLook(lesson.kind)?.label ?? lesson.kind}
-        />
-        <Fact
-          label="Status"
-          value={statusLook(lesson.status)?.label ?? lesson.status}
-        />
-        <Fact label="Transfer" value={lesson.transfer} />
-        <Fact
-          label="Polarity"
-          value={polarityLook(lesson.polarity)?.label ?? lesson.polarity}
-        />
-        <Fact label="Updated" value={formatUpdated(lesson.updatedAt)} />
-        <Fact label="Id" value={lesson.id} />
-      </VStack>
-    </Card>
+    <>
+      <ResizeHandle
+        resizable={width.props}
+        isReversed
+        hasDivider
+        label="Resize the Lesson details"
+      />
+      <LayoutPanel
+        resizable={width.props}
+        padding={4}
+        role="complementary"
+        label="Lesson details"
+      >
+        {children}
+      </LayoutPanel>
+    </>
   );
 }
 
@@ -150,6 +146,8 @@ export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
   const [total, setTotal] = useState<number | null>(null);
   const [node, setNode] = useState<string | null>(null);
   const [isNavCollapsed, setIsNavCollapsed] = useState(false);
+  // The table and the details panel: the basis of the panel's percentages.
+  const tableAndDetails = useRef<HTMLDivElement>(null);
   const [filters, setFilters] = useState<LessonFilters>(NO_FILTERS);
   // The tree, or the reason it could not be read; `null` while pending.
   const [tree, setTree] = useState<LessonTree | string | null>(null);
@@ -183,7 +181,13 @@ export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
             isCollapsed: isNavCollapsed,
             onCollapsedChange: setIsNavCollapsed,
           }}
-          resizable={{ defaultWidth: 280, minWidth: 220, maxWidth: 420 }}
+          resizable={{
+            defaultWidth: 280,
+            minWidth: 220,
+            maxWidth: 420,
+            // The dragged width is kept in the webview's storage.
+            autoSaveId: "side-nav-width",
+          }}
           header={
             <SideNavHeading
               heading="Knowqore"
@@ -234,6 +238,7 @@ export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
       }
     >
       <Layout
+        ref={tableAndDetails}
         height="fill"
         header={
           <VStack gap={0}>
@@ -297,17 +302,9 @@ export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
         }
         end={
           selected ? (
-            <LayoutPanel
-              width={360}
-              padding={4}
-              role="complementary"
-              label="Lesson details"
-            >
-              <LessonDetails
-                lesson={selected}
-                onClose={() => setSelected(null)}
-              />
-            </LayoutPanel>
+            <DetailsPanel basis={tableAndDetails}>
+              <LessonDetails row={selected} onClose={() => setSelected(null)} />
+            </DetailsPanel>
           ) : undefined
         }
       />

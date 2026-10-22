@@ -15,9 +15,13 @@ html:not([data-backdrop="mica"]) {
 
 /* A desktop app keeps the arrow over what can be clicked; the pointing hand
    is the web's. Astryx sets it through one StyleX atomic class, the one StyleX
-   compiles `cursor: pointer` to, inside its `astryx-base` layer, so this
-   unlayered rule wins without `!important`. */
+   compiles `cursor: pointer` to, inside its `astryx-base` layer, and on every
+   button in its `reset` layer, so this unlayered rule wins without
+   `!important`. Studio's own StyleX output is unlayered: it must not use
+   `cursor: pointer` (a swizzled component included), or that wins instead. */
 .x1ypdohk,
-a:any-link {
+a:any-link,
+button,
+[role="button"] {
   cursor: default;
 }

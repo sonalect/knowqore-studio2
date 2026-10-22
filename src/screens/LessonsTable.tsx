@@ -78,7 +78,12 @@ const COLUMNS: TableColumn<Item>[] = [
     sortable: true,
     renderCell: (item) => (
       <VStack gap={0.5}>
-        <Text maxLines={1} hasTruncateTooltip={false}>
+        {/* A retired Lesson is struck through: it is kept, but no longer said. */}
+        <Text
+          maxLines={1}
+          hasTruncateTooltip={false}
+          hasStrikethrough={item.status === "retired"}
+        >
           {item.statement}
         </Text>
         <Text type="supporting" size="xsm" maxLines={1}>

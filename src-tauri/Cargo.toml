@@ -37,8 +37,10 @@ knowqore-stores = { git = "https://github.com/sonalect/knowqore", rev = "99b510c
 mimalloc = { git = "https://github.com/amsokol/mimalloc", tag = "v3.5.3+1", features = ["override"] }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"
+similar = "=3.2.0"
 tauri = { version = "=2.12.4", features = [] }
 tauri-plugin-opener = "=2.7.2"
+yaml_serde = "=0.10.7"
 
 [target.'cfg(not(windows))'.dependencies]
 mundy = { version = "=0.2.3", default-features = false, features = [

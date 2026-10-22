@@ -1,5 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { dateLocale } from "./appearance";
+import type {
+  HistoryEventKind,
+  HistoryOrigin,
+  HistoryTone,
+} from "./historyLooks";
 
 /** The columns the backend sorts the Lessons by, as `lessons_page` names them. */
 export type LessonSortKey =
@@ -120,6 +125,19 @@ export function formatUpdated(updatedAt: string): string {
   }));
 }
 
+/** A calendar day (`YYYY-MM-DD`, as the store's UTC time reads) in the system's regional format. */
+export function formatDay(day: string): string {
+  return formatDate(`${day}T00:00:00Z`, () => ({
+    dateStyle: "medium",
+    timeZone: "UTC",
+  }));
+}
+
+/** The time of day of a timestamp in the system's regional format and local time zone. */
+export function formatTime(at: string): string {
+  return formatDate(at, () => ({ timeStyle: "short" }));
+}
+
 /** The full date and time with seconds and the time zone, for a tooltip. */
 export function formatUpdatedFull(updatedAt: string): string {
   return formatDate(updatedAt, () => ({
@@ -144,4 +162,185 @@ export type LessonFacets = Record<keyof LessonFilters, FacetCount[]>;
 /** Counts the values under a node (every Lesson for `null`); a failure rejects with the store's error as a string. */
 export function lessonFacets(node: string | null): Promise<LessonFacets> {
   return invoke<LessonFacets>("lesson_facets", { node });
+}
+
+/** A source of the Vault: its kind and id. */
+export interface LessonSource {
+  kind: string;
+  id: string;
+}
+
+/** Where an asset lives. */
+export interface LessonAddress {
+  source?: LessonSource;
+  version?: string;
+  locator?: string;
+}
+
+/** The asset block of a Lesson of kind `asset`. */
+export interface LessonAsset {
+  name?: string;
+  address?: LessonAddress;
+  usage?: string;
+}
+
+/** A place in a source that backs the Lesson, with the text found there. */
+export interface LessonAnchor {
+  locator?: string;
+  text?: string;
+}
+
+/** The observation that amended the Lesson. */
+export interface LessonAmendment {
+  observation?: string;
+  container?: string;
+  at?: string;
+}
+
+/** Where the Lesson was seen. Dates are RFC 3339 UTC. */
+export interface LessonSupport {
+  firstContainer?: string;
+  sourceContainers?: number;
+  recordContainers?: number;
+  containers?: number;
+  presentContainers?: number;
+  absentContainers?: number;
+  origins?: string[];
+  sourceAt?: string;
+  contentAt?: string;
+  latestAt?: string;
+  choices?: number;
+  amendment?: LessonAmendment;
+}
+
+/** The verdict of the curation of a Lesson. */
+export interface LessonCuration {
+  verdict?: string;
+  other?: string;
+  reason?: string;
+  answer?: string;
+}
+
+/** What produced the record. */
+export interface LessonProducer {
+  name?: string;
+  rulesVersion?: number;
+}
+
+/**
+ * The whole record of a Lesson, as the contract's JSON spells it. The store
+ * leaves out a field that is empty or unset, so every field but the ones the
+ * contract requires may be absent.
+ */
+export interface Lesson {
+  version?: number;
+  id?: string;
+  revision?: number;
+  kind?: string;
+  statement?: string;
+  polarity?: string;
+  conditions?: string[];
+  transfer?: string;
+  tasks?: string[];
+  asset?: LessonAsset;
+  anchors?: LessonAnchor[];
+  support?: LessonSupport;
+  status?: string;
+  statusReasons?: string[];
+  statusRule?: number;
+  curation?: LessonCuration;
+  cluster?: string;
+  membersCount?: number;
+  reducedContainers?: number;
+  membersDigest?: string;
+  producer?: LessonProducer;
+  updatedAt?: string;
+  quotes?: string[];
+  searchable?: boolean;
+}
+
+/**
+ * Reads the whole record of one Lesson and its YAML; `null` when the store
+ * does not hold it. A failure rejects with the store's code and message as a string.
+ */
+export function findLesson(id: string): Promise<FoundLesson | null> {
+  return invoke<FoundLesson | null>("find_lesson", { id });
+}
+
+/** The whole record of one Lesson, and the same record written as YAML. */
+export interface FoundLesson {
+  lesson: Lesson;
+  yaml: string;
+}
+
+/** What a chip under an event says and how it reads. */
+export interface HistoryChip {
+  text: string;
+  tone: HistoryTone;
+}
+
+/** One thing a write changed. */
+export interface HistoryEvent {
+  kind: HistoryEventKind;
+  title: string;
+  sub: string | null;
+  chips: HistoryChip[];
+  reason: string | null;
+  /** The other Lesson a curator's verdict names. */
+  other: { label: string; id: string } | null;
+  /** The statement before a revision and after it. */
+  statements: { old: string; new: string } | null;
+}
+
+/** Who wrote a version: the origin, the run's process when the note names one, and the note. */
+export interface HistoryWriter {
+  origin: HistoryOrigin;
+  run: string | null;
+  note: string;
+}
+
+/** One version of the record with what it changed. */
+export interface HistoryChange {
+  writeId: string;
+  shortId: string;
+  /** RFC 3339 UTC. */
+  at: string;
+  /** `YYYY-MM-DD`, UTC. */
+  day: string;
+  writer: HistoryWriter;
+  quiet: boolean;
+  events: HistoryEvent[];
+}
+
+/** The changes one run wrote on one day, as indices into `changes`. */
+export interface HistoryRun {
+  writer: HistoryWriter;
+  title: string;
+  day: string;
+  changes: number[];
+}
+
+/** The history of a Lesson, newest first, computed by the backend. */
+export interface LessonHistory {
+  changes: HistoryChange[];
+  /** The groups without the quiet changes. */
+  runs: HistoryRun[];
+  /** The groups with them. */
+  runsWithQuiet: HistoryRun[];
+  meaningful: number;
+  quiet: number;
+  since: string | null;
+}
+
+/**
+ * Reads the history of one Lesson; empty for a Lesson the store never held.
+ * A failure rejects with the store's code and message as a string.
+ */
+export function lessonHistory(id: string): Promise<LessonHistory> {
+  return invoke<LessonHistory>("lesson_history", { id });
+}
+
+/** The unified YAML diff of a Lesson between a write and the readable version before it. */
+export function lessonWriteDiff(id: string, writeId: string): Promise<string> {
+  return invoke<string>("lesson_write_diff", { id, writeId });
 }

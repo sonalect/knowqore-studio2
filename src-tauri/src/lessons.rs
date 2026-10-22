@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Mutex, PoisonError};
 
 use futures_lite::StreamExt as _;
-use knowqore_stores::{Empty, Error, Lesson, StoreAsync as _, StoreRef};
+use knowqore_stores::{Empty, Error, Lesson, LessonKey, StoreAsync as _, StoreRef};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
@@ -282,7 +282,7 @@ struct Entry {
 /// contract's `origins` names at most five containers, so a Lesson known in
 /// more is found under its first five only, until the store answers by
 /// container.
-fn containers_of(lesson: &Lesson) -> Vec<String> {
+pub fn containers_of(lesson: &Lesson) -> Vec<String> {
     let Some(support) = lesson.support.as_option() else {
         return Vec::new();
     };
@@ -666,6 +666,56 @@ pub async fn lesson_facets(
     .await
 }
 
+/// The record of a Lesson as YAML, or a comment that says why it cannot be written.
+pub fn record_yaml(lesson: &Lesson) -> String {
+    yaml_serde::to_string(lesson)
+        .unwrap_or_else(|error| format!("# the record could not be written as YAML: {error}\n"))
+}
+
+/// The whole record of one Lesson, and the same record written as YAML.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FoundLesson {
+    /// The record as the contract spells it (camelCase, empty fields left
+    /// out).
+    pub lesson: Lesson,
+    /// The record as YAML, or a comment that says why it cannot be written.
+    pub yaml: String,
+}
+
+impl FoundLesson {
+    fn of(lesson: Lesson) -> Self {
+        let yaml = record_yaml(&lesson);
+        Self { lesson, yaml }
+    }
+}
+
+/// Tauri command `find_lesson`: the whole record of the Lesson with `id`
+/// ([`FoundLesson`]), or `None` when the store does not hold it. Reads the
+/// store, not the rows' buffer, so nothing is cut. Fails with the store's
+/// error (its code first), and when no workspace is open.
+#[tauri::command]
+pub async fn find_lesson(
+    open_store: State<'_, OpenStore>,
+    id: String,
+) -> Result<Option<FoundLesson>, String> {
+    let Some(store) = open_store.current() else {
+        return Err("No workspace is open.".to_owned());
+    };
+    let store = store
+        .to_async_offload()
+        .map_err(|error| error.to_string())?;
+    let key = LessonKey {
+        id: Some(id),
+        ..Default::default()
+    };
+    let found = store
+        .find_lesson(key)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(found.lesson.into_option().map(FoundLesson::of))
+}
+
 /// Registers the buffer of the Lessons' rows.
 pub fn manage(app: &AppHandle) {
     app.manage(LessonsBuffer::default());
@@ -678,8 +728,8 @@ mod tests {
     use knowqore_stores::{Lesson, Support};
 
     use super::{
-        FacetCount, LessonFilters, LessonRow, LessonSortKey, Lessons, LessonsQuery, MAX_PAGE_ROWS,
-        STATEMENT_CHARS, SortDirection, containers_of,
+        FacetCount, FoundLesson, LessonFilters, LessonRow, LessonSortKey, Lessons, LessonsQuery,
+        MAX_PAGE_ROWS, STATEMENT_CHARS, SortDirection, containers_of,
     };
 
     /// Rows seen in no container.
@@ -812,6 +862,23 @@ mod tests {
             ..query(LessonSortKey::Kind, SortDirection::Ascending)
         };
         assert_eq!(lessons.page(&window).rows.len(), MAX_PAGE_ROWS);
+    }
+
+    #[test]
+    fn a_found_lesson_carries_its_record_as_yaml_in_the_contracts_names() {
+        let lesson = Lesson {
+            id: Some("l1".to_owned()),
+            statement: Some("Say it in full.".to_owned()),
+            updated_at: Some("2026-10-23T12:00:00.000Z".to_owned()),
+            ..Lesson::default()
+        };
+        let found = FoundLesson::of(lesson);
+        assert!(
+            found.yaml.contains("statement: Say it in full."),
+            "{}",
+            found.yaml
+        );
+        assert!(found.yaml.contains("updatedAt:"), "{}", found.yaml);
     }
 
     #[test]

@@ -1,3 +1,4 @@
+mod history;
 mod lessons;
 #[cfg(windows)]
 mod snap_layout;
@@ -21,6 +22,9 @@ pub fn run() {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
+            history::lesson_history,
+            history::lesson_write_diff,
+            lessons::find_lesson,
             lessons::lesson_facets,
             lessons::lesson_tree,
             lessons::lessons_page,

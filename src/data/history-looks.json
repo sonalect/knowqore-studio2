@@ -1,0 +1,29 @@
+{
+  "_comment": "How the History tab of the Lesson details colors what the backend reports (src-tauri/src/history.rs). Read by src/historyLooks.ts. event: a label and a Badge variant per event kind (the kinds of EventKind, camelCase); origin: a label and a Badge variant per origin of a write (learn, ingest, other); tone: the Badge variant of a chip by its tone (added, removed, neutral). Colors follow the previous Studio: created blue, revision pink, status and curation yellow, containers and amendment cyan, evidence and choice green, removed and unreadable red, the rest neutral. Adding an entry: key it by the backend's name and pick a Badge variant; src/historyLooks.ts checks at load that every kind, origin, and tone has one.",
+  "event": {
+    "created": { "label": "created", "badge": "blue" },
+    "revision": { "label": "revision", "badge": "pink" },
+    "status": { "label": "status", "badge": "yellow" },
+    "curation": { "label": "curator", "badge": "yellow" },
+    "containers": { "label": "containers", "badge": "cyan" },
+    "amendment": { "label": "amended", "badge": "cyan" },
+    "evidence": { "label": "evidence", "badge": "green" },
+    "choice": { "label": "choice", "badge": "green" },
+    "removed": { "label": "removed", "badge": "red" },
+    "unreadable": { "label": "unreadable", "badge": "red" },
+    "search": { "label": "search", "badge": "neutral" },
+    "tasks": { "label": "tasks", "badge": "neutral" },
+    "anchors": { "label": "anchors", "badge": "neutral" },
+    "quiet": { "label": "no change", "badge": "neutral" }
+  },
+  "origin": {
+    "learn": { "label": "learn", "badge": "blue" },
+    "ingest": { "label": "ingest", "badge": "purple" },
+    "other": { "label": "other", "badge": "neutral" }
+  },
+  "tone": {
+    "added": { "badge": "green" },
+    "removed": { "badge": "red" },
+    "neutral": { "badge": "neutral" }
+  }
+}
