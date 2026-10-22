@@ -10,15 +10,32 @@ sees only what you decide applies, in your words.
 
 ## When
 
-Call `consider` at the start of every task the human gives, however small,
-before the first edit: a follow-up task in the same session included. An
-approach that looks obvious still gets the call: the human's experience may
-hold an asset or a preference you would not think of. Call it also before any
-step that is hard to undo (deleting or rewriting files or history, changing
-build or CI configuration, publishing, running a migration). Call it again
-when the work brings a decision the first call did not cover: you are about
-to add a dependency, a tool, or a service. One call per decision, not one
-per file.
+On every message of the human, the first tool call is `consider`, before
+any read, search, edit, or command. Whether the message is "a new task" is
+not yours to judge: each message gets its call. That covers, among others:
+
+- a request, however small, a follow-up in the same session included;
+- a bug report on work you have just done, and "it still fails" after a fix;
+- a question about the code, the repository, or how something works;
+- a request to commit, push, or release.
+
+The one exception is an order to stop: then run nothing, this call
+included.
+
+An approach that looks obvious still gets the call: the human's experience
+may hold an asset or a preference you would not think of.
+
+Call it again, within the same message, when the work brings a decision the
+first call did not cover:
+
+- you are about to add a dependency, a tool, or a service;
+- a step is hard to undo (deleting or rewriting files or history, changing
+  build or CI configuration, publishing, running a migration);
+- the cause of a failure is unknown: call it with the symptom as `intent`
+  before you search the web or read another repository. The human may have
+  met it before.
+
+One call per decision, not one per file.
 
 ## The answer
 
@@ -27,8 +44,10 @@ words of a request ("add Bazel build and test to a Rust Cargo project"). Pass
 nothing else; the tool knows the repository.
 
 It returns JSON: a `response_key` and up to eight `leads`, best first. An
-empty list means nothing applies: say nothing about it and continue. A
-`note` instead of leads means Knowqore could not answer: continue without it.
+empty list means nothing applies: the call is still done, there is nothing
+to `assess` (it needs a verdict for at least one lead), say nothing about it
+and continue. A `note` instead of leads means Knowqore could not answer:
+continue without it.
 
 Each lead is one piece of the human's own experience, already distilled. A
 field that is not there has its default.
@@ -230,8 +249,11 @@ recording a new lesson about the same thing. A lead is amended once.
 
 ## Do not
 
-- Call `consider` to look things up in general. It is for choosing an
-  approach, not for search, and one call per decision.
+- Use `consider` as a search engine inside a task, one call per file or
+  per lookup. Its calls are the one per message and the one per decision
+  above.
+- Skip the call on a message because it looks like a continuation, a small
+  question, or only a commit.
 - Show the raw leads, or any lead you judged `not_applicable`, `off_task`,
   or `confirms_plan`.
 - Take an asset, module, or layout from a lead without asking, when it
