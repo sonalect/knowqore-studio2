@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "Knowqore-AI": {
+      "type": "stdio",
+      "command": "knq",
+      "args": []
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "enabledMcpjsonServers": ["Knowqore-AI"],
+  "permissions": {
+    "allow": [
+      "mcp__Knowqore-AI__consider",
+      "mcp__Knowqore-AI__assess",
+      "mcp__Knowqore-AI__respond",
+      "mcp__Knowqore-AI__record",
+      "mcp__Knowqore-AI__amend"
+    ]
+  }
+}
