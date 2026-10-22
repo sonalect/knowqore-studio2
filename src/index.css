@@ -12,3 +12,12 @@ body,
 html:not([data-backdrop="mica"]) {
   background: var(--color-background-body);
 }
+
+/* A desktop app keeps the arrow over what can be clicked; the pointing hand
+   is the web's. Astryx sets it through one StyleX atomic class, the one StyleX
+   compiles `cursor: pointer` to, inside its `astryx-base` layer, so this
+   unlayered rule wins without `!important`. */
+.x1ypdohk,
+a:any-link {
+  cursor: default;
+}

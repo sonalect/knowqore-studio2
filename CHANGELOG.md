@@ -36,6 +36,8 @@ While the major version is 0, a breaking change bumps the minor version.
   desktop's font. Buttons and other accented controls take the system's
   exact accent; a change in the system settings shows when the window
   regains focus.
+- The mouse pointer stays an arrow over buttons, links, and other clickable
+  items, as in a desktop app, instead of the web's pointing hand.
 - No white flash at startup or on resize: the window opens in the theme's
   background color even before the page has drawn.
 - The window reopens where it was left, and is pulled back onto a visible
