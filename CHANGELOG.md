@@ -9,6 +9,15 @@ While the major version is 0, a breaking change bumps the minor version.
 
 ### Added
 
+- A filter bar above the Lessons table: Kind, Status, Transfer, and Polarity
+  each take several values (a Lesson matches any value of one filter and all
+  filters). Every menu shows how many Lessons under the chosen source have
+  each value, the bar shows the number of results, and "Clear all" empties
+  the filters. Controls that do not fit fold behind a "+N" button.
+- Dates follow the system's regional format and local time zone, as in
+  native apps, not the interface language.
+- The Lessons table shows the status as a badge and the kind with a colored
+  dot, has a Polarity column, and puts the Lesson id under its statement.
 - The application skeleton on Tauri 2, React, and TypeScript (Vite, bun):
   `bun run tauri dev` opens the template window.
 - Every dependency pinned to an exact version, TypeScript 7 included.
@@ -24,7 +33,7 @@ While the major version is 0, a breaking change bumps the minor version.
   through the store, read-only. When it is missing or the store refuses it,
   an open screen says why and takes the folder to open instead.
 - A first skeleton of the Lessons screen: a side navigation with labeled
-  groups and icons, a header with breadcrumbs, summary tiles, the table of
+  groups and icons, a header with breadcrumbs, the table of
   Lessons in a card, and a details card for the clicked row.
 - The Lessons table shows the Vault's Lessons, newest first, sortable by
   every column. It reads only the rows in view as the person scrolls, so a

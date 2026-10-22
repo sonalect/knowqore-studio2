@@ -1,4 +1,8 @@
+import { Badge } from "@astryxdesign/core/Badge";
+import { HStack, VStack } from "@astryxdesign/core/Stack";
+import { StatusDot } from "@astryxdesign/core/StatusDot";
 import {
+  pixel,
   proportional,
   Table,
   type TableColumn,
@@ -6,6 +10,7 @@ import {
   useTableSortable,
 } from "@astryxdesign/core/Table";
 import { Text } from "@astryxdesign/core/Text";
+import { Tooltip } from "@astryxdesign/core/Tooltip";
 import { colorVars } from "@astryxdesign/core/theme/tokens.stylex";
 import * as stylex from "@stylexjs/stylex";
 import {
@@ -18,18 +23,21 @@ import {
 } from "react";
 import {
   formatUpdated,
+  formatUpdatedFull,
+  type LessonFilters,
   type LessonRow,
   type LessonSortKey,
   lessonsPage,
   type SortDirection,
 } from "../lessons";
+import { kindLook, polarityLook, statusLook } from "../lessonValues";
 
 /** Rows are fetched in blocks of this many. */
 const BLOCK = 100;
 /** Rows rendered beyond the visible ones, each way. */
 const OVERSCAN = 10;
 /** Until a real row is measured. */
-const ESTIMATED_ROW_HEIGHT = 36;
+const ESTIMATED_ROW_HEIGHT = 52;
 /** Until the scroll container is measured. */
 const ESTIMATED_VIEWPORT = 600;
 
@@ -43,15 +51,73 @@ const DEFAULT_SORT: Sort = { sortKey: "updatedAt", direction: "descending" };
 /** A row of the table: a Lesson, a blank placeholder, or a spacer. */
 type Item = LessonRow & { marker?: "placeholder" | "spacer" };
 
+/** A value with an optional colored dot before it; plain text for an unknown value. */
+function DotValue({
+  value,
+  look,
+}: {
+  value: string;
+  look: ReturnType<typeof kindLook>;
+}) {
+  if (!look) {
+    return <Text maxLines={1}>{value}</Text>;
+  }
+  return (
+    <HStack gap={2} vAlign="center">
+      {look.dot && <StatusDot variant={look.dot} label={look.label} />}
+      <Text maxLines={1}>{look.label}</Text>
+    </HStack>
+  );
+}
+
 const COLUMNS: TableColumn<Item>[] = [
   {
     key: "statement",
     header: "Lesson",
     width: proportional(4),
     sortable: true,
+    renderCell: (item) => (
+      <VStack gap={0.5}>
+        <Text maxLines={1} hasTruncateTooltip={false}>
+          {item.statement}
+        </Text>
+        <Text type="supporting" size="xsm" maxLines={1}>
+          {item.id}
+        </Text>
+      </VStack>
+    ),
   },
-  { key: "kind", header: "Kind", width: proportional(1), sortable: true },
-  { key: "status", header: "Status", width: proportional(1), sortable: true },
+  {
+    key: "kind",
+    header: "Kind",
+    width: proportional(1, { minWidth: 130 }),
+    sortable: true,
+    renderCell: (item) => (
+      <DotValue value={item.kind} look={kindLook(item.kind)} />
+    ),
+  },
+  {
+    key: "status",
+    header: "Status",
+    width: pixel(110),
+    sortable: true,
+    renderCell: (item) => {
+      const look = statusLook(item.status);
+      return look ? (
+        <Badge variant={look.badge} label={look.label} />
+      ) : (
+        <Text maxLines={1}>{item.status}</Text>
+      );
+    },
+  },
+  {
+    key: "polarity",
+    header: "Polarity",
+    width: pixel(100),
+    renderCell: (item) => (
+      <DotValue value={item.polarity} look={polarityLook(item.polarity)} />
+    ),
+  },
   {
     key: "transfer",
     header: "Transfer",
@@ -61,9 +127,13 @@ const COLUMNS: TableColumn<Item>[] = [
   {
     key: "updatedAt",
     header: "Updated",
-    width: proportional(1),
+    width: proportional(1, { minWidth: 150 }),
     sortable: true,
-    renderCell: (item) => formatUpdated(item.updatedAt),
+    renderCell: (item) => (
+      <Tooltip content={formatUpdatedFull(item.updatedAt)}>
+        <Text maxLines={1}>{formatUpdated(item.updatedAt)}</Text>
+      </Tooltip>
+    ),
   },
 ];
 
@@ -90,9 +160,9 @@ const styles = stylex.create({
   },
 });
 
-// Every column sorts by its own key, so the columns are the list of sort keys.
+// The columns the backend sorts by; the polarity column is not one of them.
 function isSortKey(key: string): key is LessonSortKey {
-  return COLUMNS.some((column) => column.key === key);
+  return COLUMNS.some((column) => column.key === key && column.sortable);
 }
 
 function blank(id: string, marker: "placeholder" | "spacer"): Item {
@@ -111,11 +181,13 @@ function blank(id: string, marker: "placeholder" | "spacer"): Item {
 /** The Lessons of the Vault in a table that holds only the rows near the view. */
 export function LessonsTable({
   node,
+  filters,
   selectedId,
   onSelect,
   onTotal,
 }: {
   node: string | null;
+  filters: LessonFilters;
   selectedId: string | null;
   onSelect: (row: LessonRow) => void;
   onTotal: (total: number) => void;
@@ -157,11 +229,20 @@ export function LessonsTable({
   const sortKey = sort.sortKey;
   const direction = sort.direction;
 
-  // A node change starts the list over, as a sort change does; the sort stays.
-  const shownNode = useRef(node);
+  // The filters by value: a re-render with equal filters changes nothing.
+  const filtersKey = JSON.stringify(filters);
+  const stableFilters = useMemo<LessonFilters>(
+    () => JSON.parse(filtersKey) as LessonFilters,
+    [filtersKey],
+  );
+
+  // A node or filter change starts the list over, as a sort change does; the
+  // sort stays.
+  const shown = useRef({ node, filtersKey });
   useEffect(() => {
-    if (shownNode.current === node) return;
-    shownNode.current = node;
+    if (shown.current.node === node && shown.current.filtersKey === filtersKey)
+      return;
+    shown.current = { node, filtersKey };
     generation.current += 1;
     inFlight.current.clear();
     loaded.current = new Map();
@@ -169,7 +250,7 @@ export function LessonsTable({
     setError(null);
     scrollEl.current?.scrollTo({ top: 0 });
     setScrollTop(0);
-  }, [node]);
+  }, [node, filtersKey]);
 
   useEffect(() => {
     const pruned = new Map(
@@ -190,6 +271,7 @@ export function LessonsTable({
         offset: block * BLOCK,
         limit: BLOCK,
         node,
+        filters: stableFilters,
       })
         .then((page) => {
           inFlight.current.delete(key);
@@ -210,7 +292,7 @@ export function LessonsTable({
           setError(String(reason));
         });
     }
-  }, [lo, hi, sortKey, direction, node, onTotal]);
+  }, [lo, hi, sortKey, direction, node, stableFilters, onTotal]);
 
   const attachScroll = useCallback((el: HTMLDivElement | null) => {
     observer.current?.disconnect();
@@ -351,9 +433,11 @@ export function LessonsTable({
   if (total === 0) {
     return (
       <Text color="secondary">
-        {node === null
-          ? "There are no Lessons yet."
-          : "No Lessons are seen under this source."}
+        {Object.values(filters).some((values) => values.length > 0)
+          ? "No Lessons match the filters."
+          : node === null
+            ? "There are no Lessons yet."
+            : "No Lessons are seen under this source."}
       </Text>
     );
   }

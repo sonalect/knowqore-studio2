@@ -118,6 +118,89 @@ pub struct LessonsQuery {
     /// Lesson; a key no node has lists none.
     #[serde(default)]
     pub node: Option<String>,
+    /// Which values the Lessons must have; empty narrows nothing.
+    #[serde(default)]
+    pub filters: LessonFilters,
+}
+
+/// The values a Lesson may have, per field. The values of one field are
+/// joined by "or", the fields by "and"; an empty field does not narrow.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LessonFilters {
+    /// The kinds wanted.
+    #[serde(default)]
+    pub kind: Vec<String>,
+    /// The statuses wanted.
+    #[serde(default)]
+    pub status: Vec<String>,
+    /// The transfers wanted.
+    #[serde(default)]
+    pub transfer: Vec<String>,
+    /// The polarities wanted.
+    #[serde(default)]
+    pub polarity: Vec<String>,
+}
+
+impl LessonFilters {
+    /// Whether no field narrows.
+    fn is_empty(&self) -> bool {
+        self.kind.is_empty()
+            && self.status.is_empty()
+            && self.transfer.is_empty()
+            && self.polarity.is_empty()
+    }
+
+    /// Whether `row` has one of the values wanted in every field that asks.
+    fn admits(&self, row: &LessonRow) -> bool {
+        let one_of = |wanted: &[String], value: &str| {
+            wanted.is_empty() || wanted.iter().any(|item| item == value)
+        };
+        one_of(&self.kind, &row.kind)
+            && one_of(&self.status, &row.status)
+            && one_of(&self.transfer, &row.transfer)
+            && one_of(&self.polarity, &row.polarity)
+    }
+}
+
+/// How many Lessons have one value of a field.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FacetCount {
+    /// The value, as the contract spells it.
+    pub value: String,
+    /// How many Lessons have it.
+    pub lessons: usize,
+}
+
+/// The values the Lessons under a node have, with how many Lessons have each.
+/// Every value that occurs is listed, in no particular order.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LessonFacets {
+    /// The kinds.
+    pub kind: Vec<FacetCount>,
+    /// The statuses.
+    pub status: Vec<FacetCount>,
+    /// The transfers.
+    pub transfer: Vec<FacetCount>,
+    /// The polarities.
+    pub polarity: Vec<FacetCount>,
+}
+
+/// The counts of the values `values` yields.
+fn facet_counts<'a>(values: impl Iterator<Item = &'a str>) -> Vec<FacetCount> {
+    let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
+    for value in values {
+        *counts.entry(value).or_default() += 1;
+    }
+    counts
+        .into_iter()
+        .map(|(value, lessons)| FacetCount {
+            value: value.to_owned(),
+            lessons,
+        })
+        .collect()
 }
 
 /// One window of sorted rows.
@@ -317,13 +400,17 @@ fn positions_under(entries: &[Entry], key: &str) -> Vec<usize> {
         .collect()
 }
 
+/// What the cached matching positions were found for: the node and the filters.
+type MatchKey = (Option<String>, LessonFilters);
+
 /// The Lessons of one store, in the last order asked for.
 struct Lessons {
     entries: Vec<Entry>,
     order: Option<(LessonSortKey, SortDirection)>,
-    /// The positions in `entries` of the Lessons under the last node asked
-    /// for, with its key; dropped when the order changes.
-    filtered: Option<(String, Vec<usize>)>,
+    /// The positions in `entries` of the Lessons that passed the last node
+    /// and filters asked for, under that key; dropped when the order changes.
+    /// Not kept when neither narrows.
+    matching: Option<(MatchKey, Vec<usize>)>,
     tree: LessonTree,
 }
 
@@ -342,7 +429,7 @@ impl Lessons {
         Self {
             entries,
             order: None,
-            filtered: None,
+            matching: None,
             tree,
         }
     }
@@ -370,17 +457,18 @@ impl Lessons {
     }
 
     /// The window `query` asks for; sorts the rows first when it asks for
-    /// another order than the last one, and finds the Lessons under its node
-    /// when it asks for another node than the last one.
+    /// another order than the last one, and finds the Lessons that pass its
+    /// node and filters when it asks for another node or other filters than
+    /// the last time.
     fn page(&mut self, query: &LessonsQuery) -> LessonsPage {
         let order = (query.sort_key, query.direction);
         if self.order != Some(order) {
             self.entries
                 .sort_unstable_by(|a, b| compare(&a.row, &b.row, query.sort_key, query.direction));
             self.order = Some(order);
-            self.filtered = None;
+            self.matching = None;
         }
-        let Some(key) = query.node.as_deref() else {
+        if query.node.is_none() && query.filters.is_empty() {
             let (start, end) = window(self.entries.len(), query);
             return LessonsPage {
                 total: self.entries.len(),
@@ -393,13 +481,17 @@ impl Lessons {
                     .map(|entry| entry.row.clone())
                     .collect(),
             };
-        };
-        let stale = self.filtered.as_ref().is_none_or(|(kept, _)| kept != key);
+        }
+        let stale = self
+            .matching
+            .as_ref()
+            .is_none_or(|((node, filters), _)| *node != query.node || *filters != query.filters);
         if stale {
-            self.filtered = Some((key.to_owned(), positions_under(&self.entries, key)));
+            let positions = self.positions(query.node.as_deref(), &query.filters);
+            self.matching = Some(((query.node.clone(), query.filters.clone()), positions));
         }
         let positions = self
-            .filtered
+            .matching
             .as_ref()
             .map_or(&[][..], |(_, p)| p.as_slice());
         let (start, end) = window(positions.len(), query);
@@ -413,6 +505,42 @@ impl Lessons {
                 .filter_map(|&index| self.entries.get(index))
                 .map(|entry| entry.row.clone())
                 .collect(),
+        }
+    }
+
+    /// The positions of the Lessons under `node` (all when `None`) that
+    /// `filters` admit.
+    fn positions(&self, node: Option<&str>, filters: &LessonFilters) -> Vec<usize> {
+        let mut positions = match node {
+            Some(key) => positions_under(&self.entries, key),
+            None => (0..self.entries.len()).collect(),
+        };
+        if !filters.is_empty() {
+            positions.retain(|&index| {
+                self.entries
+                    .get(index)
+                    .is_some_and(|entry| filters.admits(&entry.row))
+            });
+        }
+        positions
+    }
+
+    /// The values of each field of the Lessons under `node` (all when
+    /// `None`), with their counts.
+    fn facets(&self, node: Option<&str>) -> LessonFacets {
+        let rows: Vec<&LessonRow> = match node {
+            Some(key) => positions_under(&self.entries, key)
+                .into_iter()
+                .filter_map(|index| self.entries.get(index))
+                .map(|entry| &entry.row)
+                .collect(),
+            None => self.entries.iter().map(|entry| &entry.row).collect(),
+        };
+        LessonFacets {
+            kind: facet_counts(rows.iter().map(|row| row.kind.as_str())),
+            status: facet_counts(rows.iter().map(|row| row.status.as_str())),
+            transfer: facet_counts(rows.iter().map(|row| row.transfer.as_str())),
+            polarity: facet_counts(rows.iter().map(|row| row.polarity.as_str())),
         }
     }
 }
@@ -523,6 +651,21 @@ pub async fn lesson_tree(
     answer_from(&open_store, &buffer, |lessons| lessons.tree.clone()).await
 }
 
+/// Tauri command `lesson_facets`: for the Lessons under the node of the tree
+/// asked for (all when `None`), how many have each value of kind, status,
+/// transfer, and polarity. Fails like `lessons_page`.
+#[tauri::command]
+pub async fn lesson_facets(
+    open_store: State<'_, OpenStore>,
+    buffer: State<'_, LessonsBuffer>,
+    node: Option<String>,
+) -> Result<LessonFacets, String> {
+    answer_from(&open_store, &buffer, |lessons| {
+        lessons.facets(node.as_deref())
+    })
+    .await
+}
+
 /// Registers the buffer of the Lessons' rows.
 pub fn manage(app: &AppHandle) {
     app.manage(LessonsBuffer::default());
@@ -535,8 +678,8 @@ mod tests {
     use knowqore_stores::{Lesson, Support};
 
     use super::{
-        LessonRow, LessonSortKey, Lessons, LessonsQuery, MAX_PAGE_ROWS, STATEMENT_CHARS,
-        SortDirection, containers_of,
+        FacetCount, LessonFilters, LessonRow, LessonSortKey, Lessons, LessonsQuery, MAX_PAGE_ROWS,
+        STATEMENT_CHARS, SortDirection, containers_of,
     };
 
     /// Rows seen in no container.
@@ -588,6 +731,7 @@ mod tests {
             offset: 0,
             limit: 10,
             node: None,
+            filters: LessonFilters::default(),
         }
     }
 
@@ -827,6 +971,115 @@ mod tests {
                 "{key}"
             );
         }
+    }
+
+    /// Rows of known kind, status, and polarity, seen in containers.
+    fn faceted() -> Lessons {
+        let mut kinds = HashMap::new();
+        kinds.insert("a/x".to_owned(), "git".to_owned());
+        kinds.insert("b/y".to_owned(), "git".to_owned());
+        let make = |id: &str, kind: &str, status: &str, polarity: &str, at: &str| {
+            let mut row = row(id, id, kind, "t");
+            row.status = status.to_owned();
+            row.polarity = polarity.to_owned();
+            (row, vec![at.to_owned()])
+        };
+        Lessons::new(
+            vec![
+                make("l1", "asset", "active", "prefer", "a/x"),
+                make("l2", "asset", "retired", "avoid", "a/x"),
+                make("l3", "pitfall", "active", "avoid", "b/y"),
+                make("l4", "practice", "active", "prefer", "b/y"),
+            ],
+            &kinds,
+        )
+    }
+
+    fn strings(items: &[&str]) -> Vec<String> {
+        items.iter().map(|item| (*item).to_owned()).collect()
+    }
+
+    fn filtered(node: Option<&str>, filters: LessonFilters) -> LessonsQuery {
+        LessonsQuery {
+            node: node.map(str::to_owned),
+            filters,
+            ..query(LessonSortKey::Statement, SortDirection::Ascending)
+        }
+    }
+
+    #[test]
+    fn values_of_one_field_are_or_and_fields_are_and() {
+        let mut lessons = faceted();
+        let kinds = LessonFilters {
+            kind: strings(&["asset", "pitfall"]),
+            ..LessonFilters::default()
+        };
+        let page = lessons.page(&filtered(None, kinds.clone()));
+        assert_eq!((page.total, ids_of(&page)), (3, vec!["l1", "l2", "l3"]));
+        let both = LessonFilters {
+            status: strings(&["active"]),
+            ..kinds
+        };
+        let page = lessons.page(&filtered(None, both));
+        assert_eq!((page.total, ids_of(&page)), (2, vec!["l1", "l3"]));
+    }
+
+    #[test]
+    fn filters_apply_within_a_node_and_empty_filters_change_nothing() {
+        let mut lessons = faceted();
+        let avoid = LessonFilters {
+            polarity: strings(&["avoid"]),
+            ..LessonFilters::default()
+        };
+        let page = lessons.page(&filtered(Some("git:a"), avoid));
+        assert_eq!((page.total, ids_of(&page)), (1, vec!["l2"]));
+        let plain = lessons.page(&filtered(Some("git:a"), LessonFilters::default()));
+        assert_eq!(plain.total, 2);
+        let all = lessons.page(&filtered(None, LessonFilters::default()));
+        assert_eq!(all.total, 4);
+    }
+
+    #[test]
+    fn the_cache_follows_the_filters_alone() {
+        let mut lessons = faceted();
+        let by = |status: &str| LessonFilters {
+            status: strings(&[status]),
+            ..LessonFilters::default()
+        };
+        assert_eq!(lessons.page(&filtered(Some("git:"), by("active"))).total, 3);
+        assert_eq!(
+            lessons.page(&filtered(Some("git:"), by("retired"))).total,
+            1
+        );
+        assert_eq!(lessons.page(&filtered(Some("git:"), by("active"))).total, 3);
+        assert_eq!(lessons.page(&filtered(None, by("retired"))).total, 1);
+        assert_eq!(lessons.page(&filtered(None, by("candidate"))).total, 0);
+    }
+
+    fn counts(facets: &[FacetCount]) -> Vec<(&str, usize)> {
+        facets
+            .iter()
+            .map(|facet| (facet.value.as_str(), facet.lessons))
+            .collect()
+    }
+
+    #[test]
+    fn facets_count_the_values_under_a_node_and_for_all() {
+        let lessons = faceted();
+        let all = lessons.facets(None);
+        assert_eq!(
+            counts(&all.kind),
+            [("asset", 2), ("pitfall", 1), ("practice", 1)]
+        );
+        assert_eq!(counts(&all.status), [("active", 3), ("retired", 1)]);
+        let under = lessons.facets(Some("git:a"));
+        assert_eq!(counts(&under.kind), [("asset", 2)]);
+        assert_eq!(counts(&under.polarity), [("avoid", 1), ("prefer", 1)]);
+        assert_eq!(counts(&under.transfer), [("global", 2)]);
+        assert_eq!(
+            lessons.facets(Some("git:nowhere")),
+            super::LessonFacets::default()
+        );
     }
 
     fn ids_of(page: &super::LessonsPage) -> Vec<&str> {

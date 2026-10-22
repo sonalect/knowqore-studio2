@@ -98,9 +98,37 @@ async function loadSystemStyle() {
   }
 }
 
+// The system's regional format for dates; `undefined` keeps the webview's own.
+let regionalLocale: string | undefined;
+
+/**
+ * The locale to format dates with: the system's regional format (the
+ * webview's default follows the interface language instead), or `undefined`
+ * when the system names none or the webview has no data for it.
+ */
+export function dateLocale(): string | undefined {
+  return regionalLocale;
+}
+
+async function loadDateLocale() {
+  if (!isTauriRuntime()) {
+    return;
+  }
+  try {
+    const tag = (await invoke<string>("system_locale")).trim();
+    // A tag such as `en-RU` may be unknown to the webview's ICU, which then
+    // falls back to the language; an unsupported one is not used at all.
+    if (tag && Intl.DateTimeFormat.supportedLocalesOf(tag).length > 0) {
+      regionalLocale = tag;
+    }
+  } catch {
+    regionalLocale = undefined;
+  }
+}
+
 export async function initAppearance() {
   applyDocumentTheme(getPrefersDark());
-  await loadSystemStyle();
+  await Promise.all([loadSystemStyle(), loadDateLocale()]);
   // Before the Theme mounts this is the core Astryx shade; App syncs the
   // theme's own once it renders.
   syncNativeBackground();

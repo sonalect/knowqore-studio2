@@ -2,6 +2,7 @@ mod lessons;
 #[cfg(windows)]
 mod snap_layout;
 mod system_appearance;
+mod system_locale;
 mod system_style;
 mod title_drag;
 mod window_controls;
@@ -20,9 +21,11 @@ pub fn run() {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
+            lessons::lesson_facets,
             lessons::lesson_tree,
             lessons::lessons_page,
             system_appearance::system_appearance,
+            system_locale::system_locale,
             system_style::system_style,
             title_drag::set_title_drag_region,
             window_controls::window_controls,

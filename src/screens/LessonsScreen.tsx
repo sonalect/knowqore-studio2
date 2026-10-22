@@ -3,7 +3,6 @@ import { Badge } from "@astryxdesign/core/Badge";
 import { BreadcrumbItem, Breadcrumbs } from "@astryxdesign/core/Breadcrumbs";
 import { Card } from "@astryxdesign/core/Card";
 import { Divider } from "@astryxdesign/core/Divider";
-import { Grid } from "@astryxdesign/core/Grid";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
@@ -22,9 +21,9 @@ import { TreeList, type TreeListItemData } from "@astryxdesign/core/TreeList";
 import * as stylex from "@stylexjs/stylex";
 import {
   BookOpen,
-  Clock,
   Folder,
   FolderGit2,
+  FolderTree,
   Layers,
   Library,
   Settings,
@@ -33,32 +32,19 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import {
   formatUpdated,
+  type LessonFilters,
   type LessonRow,
   type LessonTree,
   type LessonTreeNode,
   lessonTree,
+  NO_FILTERS,
 } from "../lessons";
+import { kindLook, polarityLook, statusLook } from "../lessonValues";
 import type { OpenWorkspace } from "../workspace";
+import { LessonsFilterBar } from "./LessonsFilterBar";
 import { LessonsTable } from "./LessonsTable";
 
 const NUMBER = new Intl.NumberFormat();
-
-// Summary tiles above the table; the last update is not shown yet.
-function summary(total: number | null, containers: number | null) {
-  return [
-    {
-      label: "Lessons",
-      value: total === null ? "—" : NUMBER.format(total),
-      icon: BookOpen,
-    },
-    {
-      label: "Sources",
-      value: containers === null ? "—" : NUMBER.format(containers),
-      icon: FolderGit2,
-    },
-    { label: "Last update", value: "—", icon: Clock },
-  ];
-}
 
 const styles = stylex.create({
   // AppShell fills the viewport by default; here it sits under Studio's
@@ -107,24 +93,6 @@ function treeItems(
   }));
 }
 
-function SummaryTile({
-  label,
-  value,
-  icon,
-}: ReturnType<typeof summary>[number]) {
-  return (
-    <Card padding={4}>
-      <VStack gap={2}>
-        <HStack gap={2} vAlign="center">
-          <Icon icon={icon} size="sm" color="secondary" />
-          <Text color="secondary">{label}</Text>
-        </HStack>
-        <Heading level={2}>{value}</Heading>
-      </VStack>
-    </Card>
-  );
-}
-
 function Fact({ label, value }: { label: string; value: string }) {
   return (
     <VStack gap={0.5}>
@@ -156,10 +124,19 @@ function LessonDetails({
         </HStack>
         <Text>{lesson.statement}</Text>
         <Divider />
-        <Fact label="Kind" value={lesson.kind} />
-        <Fact label="Status" value={lesson.status} />
+        <Fact
+          label="Kind"
+          value={kindLook(lesson.kind)?.label ?? lesson.kind}
+        />
+        <Fact
+          label="Status"
+          value={statusLook(lesson.status)?.label ?? lesson.status}
+        />
         <Fact label="Transfer" value={lesson.transfer} />
-        <Fact label="Polarity" value={lesson.polarity} />
+        <Fact
+          label="Polarity"
+          value={polarityLook(lesson.polarity)?.label ?? lesson.polarity}
+        />
         <Fact label="Updated" value={formatUpdated(lesson.updatedAt)} />
         <Fact label="Id" value={lesson.id} />
       </VStack>
@@ -172,6 +149,8 @@ export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
   const [selected, setSelected] = useState<LessonRow | null>(null);
   const [total, setTotal] = useState<number | null>(null);
   const [node, setNode] = useState<string | null>(null);
+  const [isNavCollapsed, setIsNavCollapsed] = useState(false);
+  const [filters, setFilters] = useState<LessonFilters>(NO_FILTERS);
   // The tree, or the reason it could not be read; `null` while pending.
   const [tree, setTree] = useState<LessonTree | string | null>(null);
 
@@ -200,7 +179,10 @@ export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
       xstyle={styles.shell}
       sideNav={
         <SideNav
-          collapsible
+          collapsible={{
+            isCollapsed: isNavCollapsed,
+            onCollapsedChange: setIsNavCollapsed,
+          }}
           resizable={{ defaultWidth: 280, minWidth: 220, maxWidth: 420 }}
           header={
             <SideNavHeading
@@ -228,7 +210,16 @@ export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
             />
           </SideNavSection>
           <SideNavSection title="Sources">
-            {tree === null ? (
+            {isNavCollapsed ? (
+              // The rail has no room for the tree: one icon stands for it,
+              // marked while a node narrows the table, and opens the nav.
+              <SideNavItem
+                label="Sources"
+                icon={FolderTree}
+                isSelected={node !== null}
+                onClick={() => setIsNavCollapsed(false)}
+              />
+            ) : tree === null ? (
               <Text color="secondary">Reading the sources…</Text>
             ) : typeof tree === "string" ? (
               <Text color="secondary">{tree}</Text>
@@ -245,54 +236,56 @@ export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
       <Layout
         height="fill"
         header={
-          <Toolbar
-            label="Lessons"
-            size="sm"
-            dividers={["bottom"]}
-            startContent={
-              <Breadcrumbs label="Location">
-                <BreadcrumbItem onClick={() => setNode(null)}>
-                  Lessons
-                </BreadcrumbItem>
-                {path.length === 0 ? (
-                  <BreadcrumbItem isCurrent>All Lessons</BreadcrumbItem>
-                ) : (
-                  path.map((crumb, index) =>
-                    index === path.length - 1 ? (
-                      <BreadcrumbItem key={crumb.key} isCurrent>
-                        {crumb.label}
-                      </BreadcrumbItem>
-                    ) : (
-                      <BreadcrumbItem
-                        key={crumb.key}
-                        onClick={() => setNode(crumb.key)}
-                      >
-                        {crumb.label}
-                      </BreadcrumbItem>
-                    ),
-                  )
-                )}
-              </Breadcrumbs>
-            }
-          />
+          <VStack gap={0}>
+            <Toolbar
+              label="Lessons"
+              size="sm"
+              dividers={["bottom"]}
+              startContent={
+                <Breadcrumbs label="Location">
+                  <BreadcrumbItem onClick={() => setNode(null)}>
+                    Lessons
+                  </BreadcrumbItem>
+                  {path.length === 0 ? (
+                    <BreadcrumbItem isCurrent>All Lessons</BreadcrumbItem>
+                  ) : (
+                    path.map((crumb, index) =>
+                      index === path.length - 1 ? (
+                        <BreadcrumbItem key={crumb.key} isCurrent>
+                          {crumb.label}
+                        </BreadcrumbItem>
+                      ) : (
+                        <BreadcrumbItem
+                          key={crumb.key}
+                          onClick={() => setNode(crumb.key)}
+                        >
+                          {crumb.label}
+                        </BreadcrumbItem>
+                      ),
+                    )
+                  )}
+                </Breadcrumbs>
+              }
+            />
+            {/* In the header, so the table and the details card start at one height. */}
+            <VStack paddingInline={4} paddingBlockStart={4}>
+              <LessonsFilterBar
+                node={node}
+                filters={filters}
+                total={total}
+                onChange={setFilters}
+              />
+            </VStack>
+          </VStack>
         }
         content={
           <LayoutContent padding={4} isScrollable={false}>
-            <VStack gap={4} height="100%">
-              <Grid columns={3} gap={4}>
-                {summary(
-                  total,
-                  typeof tree === "object" && tree !== null
-                    ? tree.containers
-                    : null,
-                ).map((tile) => (
-                  <SummaryTile key={tile.label} {...tile} />
-                ))}
-              </Grid>
+            <VStack height="100%">
               <StackItem size="fill">
                 <Card padding={0} height="100%">
                   <LessonsTable
                     node={node}
+                    filters={filters}
                     selectedId={selected?.id ?? null}
                     onSelect={setSelected}
                     onTotal={setTotal}

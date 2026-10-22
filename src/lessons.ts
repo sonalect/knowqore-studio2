@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { dateLocale } from "./appearance";
 
 /** The columns the backend sorts the Lessons by, as `lessons_page` names them. */
 export type LessonSortKey =
@@ -10,6 +11,22 @@ export type LessonSortKey =
 
 export type SortDirection = "ascending" | "descending";
 
+/** The values a Lesson may have, per field; an empty field does not narrow. */
+export interface LessonFilters {
+  kind: string[];
+  status: string[];
+  transfer: string[];
+  polarity: string[];
+}
+
+/** Filters that narrow nothing. */
+export const NO_FILTERS: LessonFilters = {
+  kind: [],
+  status: [],
+  transfer: [],
+  polarity: [],
+};
+
 /** One window of the sorted Lessons: `limit` is capped at 500 by the backend. */
 export interface LessonsQuery {
   sortKey: LessonSortKey;
@@ -18,6 +35,8 @@ export interface LessonsQuery {
   limit: number;
   /** The key of a tree node: only the Lessons under it. `null` is every Lesson. */
   node: string | null;
+  /** Values of one field are joined by "or", the fields by "and". */
+  filters: LessonFilters;
 }
 
 /**
@@ -73,13 +92,56 @@ export function lessonTree(): Promise<LessonTree> {
   return invoke<LessonTree>("lesson_tree");
 }
 
-const UPDATED_FORMAT = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "short",
-  timeStyle: "short",
-});
-
-/** The time of a Lesson in the viewer's locale; the raw text when it is not a date. */
-export function formatUpdated(updatedAt: string): string {
+/** A date in the system's regional format and local time zone. */
+function formatDate(
+  updatedAt: string,
+  options: (date: Date) => Intl.DateTimeFormatOptions,
+): string {
   const date = new Date(updatedAt);
-  return Number.isNaN(date.getTime()) ? updatedAt : UPDATED_FORMAT.format(date);
+  if (Number.isNaN(date.getTime())) {
+    return updatedAt;
+  }
+  return new Intl.DateTimeFormat(dateLocale(), options(date)).format(date);
+}
+
+/**
+ * The time of a Lesson as "Nov 3, 10:08 PM" in the system's regional format,
+ * with the year only when it is not the current one; the raw text when it is
+ * not a date.
+ */
+export function formatUpdated(updatedAt: string): string {
+  return formatDate(updatedAt, (date) => ({
+    year:
+      date.getFullYear() === new Date().getFullYear() ? undefined : "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }));
+}
+
+/** The full date and time with seconds and the time zone, for a tooltip. */
+export function formatUpdatedFull(updatedAt: string): string {
+  return formatDate(updatedAt, () => ({
+    dateStyle: "long",
+    timeStyle: "long",
+  }));
+}
+
+/** How many Lessons have one value of a field. */
+export interface FacetCount {
+  value: string;
+  lessons: number;
+}
+
+/**
+ * The values of each field the Lessons under a node have, with how many
+ * Lessons have each, in no particular order. A value that does not occur is
+ * not listed.
+ */
+export type LessonFacets = Record<keyof LessonFilters, FacetCount[]>;
+
+/** Counts the values under a node (every Lesson for `null`); a failure rejects with the store's error as a string. */
+export function lessonFacets(node: string | null): Promise<LessonFacets> {
+  return invoke<LessonFacets>("lesson_facets", { node });
 }

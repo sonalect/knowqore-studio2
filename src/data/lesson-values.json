@@ -1,0 +1,24 @@
+{
+  "_comment": "How the Lessons table shows the contract's values. Read by src/lessonValues.ts. status: a Badge variant per status; kind: a StatusDot variant (accent, success, warning, error, neutral) and a label per kind; polarity: a label and an optional dot variant (no dot when absent); transfer: a label. Adding an entry: key it by the contract's value, give a label, and pick a variant from the lists above; a new value of the contract also goes into the lists at the top of src/lessonValues.ts, which checks at load that every one has an entry.",
+  "status": {
+    "candidate": { "label": "candidate", "badge": "blue" },
+    "active": { "label": "active", "badge": "green" },
+    "retired": { "label": "retired", "badge": "neutral" }
+  },
+  "kind": {
+    "asset": { "label": "asset", "dot": "accent" },
+    "practice": { "label": "practice", "dot": "success" },
+    "decision": { "label": "decision", "dot": "warning" },
+    "pitfall": { "label": "pitfall", "dot": "error" },
+    "project_fact": { "label": "project fact", "dot": "neutral" },
+    "preference": { "label": "preference", "dot": "neutral" }
+  },
+  "transfer": {
+    "global": { "label": "global" },
+    "local": { "label": "local" }
+  },
+  "polarity": {
+    "prefer": { "label": "prefer", "dot": "success" },
+    "avoid": { "label": "avoid", "dot": "error" }
+  }
+}

@@ -15,7 +15,10 @@ only that module (owner, 23 October 2026).
    the store's index without reading every record.
 2. **A filter by container**: the Lessons seen in one container, or under a
    prefix of container ids (`github.com/sonalect`), with the same sort and
-   window. Today Studio places a Lesson by `Support.origins`, which names at
+   window, narrowed also by kind, status, transfer, and polarity (several
+   values of one field are "or", fields are "and"), with the count of
+   Lessons per value of each of the four fields under the same container
+   (`lesson_facets`). Today Studio places a Lesson by `Support.origins`, which names at
    most five containers, so a Lesson known in more is found under its first
    five only. `LessonContainersOf` has them all, but one call per Lesson.
 3. **The containers with their counts**: each container with its kind and
