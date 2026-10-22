@@ -10,17 +10,31 @@ sees only what you decide applies, in your words.
 
 ## When
 
-On every message of the human, the first tool call is `consider`, before
-any read, search, edit, or command. Whether the message is "a new task" is
-not yours to judge: each message gets its call. That covers, among others:
+A message of the human may hold many things at once: facts, confirmations,
+corrections, questions, and tasks. First find in it what you are to do:
+each task, and each question that needs advice, a plan, or a
+recommendation. Then call `consider` once for each of them, before any
+other tool call of your reply, with that task as the `intent` in the words
+of a request (not a retelling of the message: "the Linux window moves only
+on every second drag", not "the human reports a bug"). Two tasks in one
+message are two calls.
 
-- a request, however small, a follow-up in the same session included;
-- a bug report on work you have just done, and "it still fails" after a fix;
-- a question about the code, the repository, or how something works;
-- a request to commit, push, or release.
+A task is there when your reply does any work or gives advice:
 
-The one exception is an order to stop: then run nothing, this call
-included.
+- it calls any tool: reads, searches, edits, runs a command, commits;
+- or it gives advice, a plan, or a recommendation, even from memory alone.
+
+Whether the message is "a new task" is not yours to judge: the test is what
+your reply does, not what the message looks like. A confirmation such as
+"it works" that lets you carry on with announced work (remove a temporary
+change, commit) gets the call; a bug report on work you have just done,
+"it still fails" after a fix, a question you answer by looking at the code,
+and a request to commit or push get it too.
+
+No call when the reply only acknowledges or reports, with no tool call:
+"thanks", "it works" with nothing left to do, a status question about
+what you have already said. An order to stop gets no call either: run
+nothing.
 
 An approach that looks obvious still gets the call: the human's experience
 may hold an asset or a preference you would not think of.
@@ -250,10 +264,10 @@ recording a new lesson about the same thing. A lead is amended once.
 ## Do not
 
 - Use `consider` as a search engine inside a task, one call per file or
-  per lookup. Its calls are the one per message and the one per decision
+  per lookup. Its calls are the one per task and the one per decision
   above.
-- Skip the call on a message because it looks like a continuation, a small
-  question, or only a commit.
+- Skip the call on a reply that does work because the message looks like a
+  continuation, a small question, a confirmation, or only a commit.
 - Show the raw leads, or any lead you judged `not_applicable`, `off_task`,
   or `confirms_plan`.
 - Take an asset, module, or layout from a lead without asking, when it
