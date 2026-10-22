@@ -1,3 +1,9 @@
+import {
+  colorVars,
+  spacingVars,
+  typographyVars,
+} from "@astryxdesign/core/theme/tokens.stylex";
+import * as stylex from "@stylexjs/stylex";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -12,6 +18,143 @@ import { isTauriRuntime } from "../appearance";
 import { platform } from "../platform";
 
 const WINDOW_TITLE = "Knowqore Studio";
+
+const styles = stylex.create({
+  bar: {
+    display: "flex",
+    height: 32,
+    flexShrink: 0,
+    alignItems: "center",
+    overflow: "hidden",
+    color: colorVars["--color-text-primary"],
+    userSelect: "none",
+    WebkitUserSelect: "none",
+  },
+  linuxBar: {
+    position: "relative",
+    height: 36,
+    borderBottomWidth: 1,
+    borderBottomStyle: "solid",
+    borderBottomColor: colorVars["--color-border-emphasized"],
+  },
+  drag: {
+    display: "flex",
+    height: "100%",
+    minWidth: 0,
+    flex: 1,
+    alignItems: "center",
+    gap: spacingVars["--spacing-2"],
+    paddingBlock: 0,
+    paddingInline: spacingVars["--spacing-3"],
+  },
+  icon: {
+    width: spacingVars["--spacing-4"],
+    height: spacingVars["--spacing-4"],
+    pointerEvents: "none",
+  },
+  title: {
+    overflow: "hidden",
+    pointerEvents: "none",
+    fontFamily: typographyVars["--font-family-body"],
+    fontSize: "var(--text-supporting-size)",
+    lineHeight: "var(--text-supporting-leading)",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  // GNOME centers the title over the whole bar, whatever the buttons.
+  linuxTitle: {
+    position: "absolute",
+    left: "50%",
+    transform: "translateX(-50%)",
+    maxWidth: "60%",
+    fontWeight: 600,
+  },
+  captionButtons: {
+    display: "flex",
+    height: 32,
+    overflow: "hidden",
+  },
+  captionButton: {
+    appearance: "none",
+    display: "inline-flex",
+    width: 46,
+    height: 32,
+    margin: 0,
+    padding: 0,
+    flexShrink: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 0,
+    borderRadius: 0,
+    backgroundColor: {
+      default: "transparent",
+      ":hover": colorVars["--color-overlay-hover"],
+    },
+    boxShadow: "none",
+    outline: "none",
+    color: "inherit",
+    cursor: "default",
+    lineHeight: 0,
+    overflow: "hidden",
+  },
+  // The maximize button while the Snap Layout overlay above it is hovered.
+  captionButtonActive: {
+    backgroundColor: colorVars["--color-overlay-hover"],
+  },
+  captionClose: {
+    backgroundColor: {
+      default: "transparent",
+      ":hover": colorVars["--color-background-error-inverted"],
+      ":active": colorVars["--color-background-error-inverted"],
+    },
+    color: {
+      default: "inherit",
+      ":hover": colorVars["--color-on-dark"],
+      ":active": colorVars["--color-on-dark"],
+    },
+  },
+  captionIcon: {
+    width: spacingVars["--spacing-3"],
+    height: spacingVars["--spacing-3"],
+  },
+  windowControls: {
+    display: "flex",
+    height: "100%",
+    alignItems: "center",
+    gap: spacingVars["--spacing-3"],
+    paddingBlock: 0,
+    paddingInline: spacingVars["--spacing-2"],
+  },
+  windowControl: {
+    appearance: "none",
+    display: "inline-flex",
+    width: 24,
+    height: 24,
+    margin: 0,
+    padding: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 0,
+    borderRadius: "50%",
+    backgroundColor: {
+      default: colorVars["--color-overlay-hover"],
+      ":hover": colorVars["--color-overlay-pressed"],
+      ":active": colorVars["--color-overlay-pressed"],
+    },
+    filter: {
+      default: null,
+      ":active": "brightness(0.9)",
+    },
+    outline: "none",
+    color: "inherit",
+    cursor: "default",
+    lineHeight: 0,
+  },
+  windowControlIcon: {
+    width: 16,
+    height: 16,
+  },
+});
 
 export type WindowControl = "minimize" | "maximize" | "close";
 
@@ -44,7 +187,11 @@ export async function loadWindowControls(): Promise<WindowControls> {
 
 function CaptionMinimizeIcon() {
   return (
-    <svg aria-hidden="true" viewBox="0 0 12 12" className="caption-icon">
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 12 12"
+      {...stylex.props(styles.captionIcon)}
+    >
       <rect width="10" height="1" x="1" y="5.5" fill="currentColor" />
     </svg>
   );
@@ -52,7 +199,11 @@ function CaptionMinimizeIcon() {
 
 function CaptionMaximizeIcon() {
   return (
-    <svg aria-hidden="true" viewBox="0 0 12 12" className="caption-icon">
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 12 12"
+      {...stylex.props(styles.captionIcon)}
+    >
       <rect
         width="9"
         height="9"
@@ -68,7 +219,11 @@ function CaptionMaximizeIcon() {
 
 function CaptionRestoreIcon() {
   return (
-    <svg aria-hidden="true" viewBox="0 0 12 12" className="caption-icon">
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 12 12"
+      {...stylex.props(styles.captionIcon)}
+    >
       <path
         fill="none"
         stroke="currentColor"
@@ -90,7 +245,11 @@ function CaptionRestoreIcon() {
 
 function CaptionCloseIcon() {
   return (
-    <svg aria-hidden="true" viewBox="0 0 12 12" className="caption-icon">
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 12 12"
+      {...stylex.props(styles.captionIcon)}
+    >
       <path
         fill="none"
         stroke="currentColor"
@@ -107,7 +266,7 @@ function LinuxMinimizeIcon() {
     <svg
       aria-hidden="true"
       viewBox="0 0 16 16"
-      className="window-control__icon"
+      {...stylex.props(styles.windowControlIcon)}
     >
       <rect width="8" height="1.5" x="4" y="10.25" fill="currentColor" />
     </svg>
@@ -119,7 +278,7 @@ function LinuxMaximizeIcon() {
     <svg
       aria-hidden="true"
       viewBox="0 0 16 16"
-      className="window-control__icon"
+      {...stylex.props(styles.windowControlIcon)}
     >
       <rect
         width="7.5"
@@ -140,7 +299,7 @@ function LinuxRestoreIcon() {
     <svg
       aria-hidden="true"
       viewBox="0 0 16 16"
-      className="window-control__icon"
+      {...stylex.props(styles.windowControlIcon)}
     >
       <path
         fill="none"
@@ -167,7 +326,7 @@ function LinuxCloseIcon() {
     <svg
       aria-hidden="true"
       viewBox="0 0 16 16"
-      className="window-control__icon"
+      {...stylex.props(styles.windowControlIcon)}
     >
       <path
         fill="none"
@@ -330,7 +489,7 @@ export function TitleBar({ controls }: { controls: WindowControls }) {
           <button
             key={control}
             type="button"
-            className="caption-button"
+            {...stylex.props(styles.captionButton)}
             aria-label="Minimize"
             onClick={minimize}
           >
@@ -342,11 +501,10 @@ export function TitleBar({ controls }: { controls: WindowControls }) {
           <button
             key={control}
             type="button"
-            className={
-              snapHover
-                ? "caption-button caption-button--active"
-                : "caption-button"
-            }
+            {...stylex.props(
+              styles.captionButton,
+              snapHover && styles.captionButtonActive,
+            )}
             aria-label={maximized ? "Restore" : "Maximize"}
             onClick={toggleMaximize}
           >
@@ -358,7 +516,7 @@ export function TitleBar({ controls }: { controls: WindowControls }) {
           <button
             key={control}
             type="button"
-            className="caption-button caption-button--close"
+            {...stylex.props(styles.captionButton, styles.captionClose)}
             aria-label="Close"
             onClick={close}
           >
@@ -375,7 +533,7 @@ export function TitleBar({ controls }: { controls: WindowControls }) {
           <button
             key={control}
             type="button"
-            className="window-control"
+            {...stylex.props(styles.windowControl)}
             aria-label="Minimize"
             onClick={minimize}
           >
@@ -387,7 +545,7 @@ export function TitleBar({ controls }: { controls: WindowControls }) {
           <button
             key={control}
             type="button"
-            className="window-control"
+            {...stylex.props(styles.windowControl)}
             aria-label={maximized ? "Restore" : "Maximize"}
             onClick={toggleMaximize}
           >
@@ -399,7 +557,7 @@ export function TitleBar({ controls }: { controls: WindowControls }) {
           <button
             key={control}
             type="button"
-            className="window-control"
+            {...stylex.props(styles.windowControl)}
             aria-label="Close"
             onClick={close}
           >
@@ -410,21 +568,29 @@ export function TitleBar({ controls }: { controls: WindowControls }) {
   }
 
   const button = platform === "windows" ? windowsButton : linuxButton;
-  const group = platform === "windows" ? "caption-buttons" : "window-controls";
+  const group = stylex.props(
+    platform === "windows" ? styles.captionButtons : styles.windowControls,
+  );
+  const linux = platform === "linux";
 
   return (
-    <header ref={barRef} className={`title-bar title-bar--${platform}`}>
+    <header
+      ref={barRef}
+      {...stylex.props(styles.bar, linux && styles.linuxBar)}
+    >
       {controls.start.length > 0 ? (
-        <div className={group}>{controls.start.map(button)}</div>
+        <div {...group}>{controls.start.map(button)}</div>
       ) : null}
-      <div className="title-bar__drag" onPointerDown={onTitlePointerDown}>
+      <div {...stylex.props(styles.drag)} onPointerDown={onTitlePointerDown}>
         {platform === "windows" ? (
-          <img src="/tauri.svg" alt="" className="title-bar__icon" />
+          <img src="/tauri.svg" alt="" {...stylex.props(styles.icon)} />
         ) : null}
-        <span className="title-bar__title">{WINDOW_TITLE}</span>
+        <span {...stylex.props(styles.title, linux && styles.linuxTitle)}>
+          {WINDOW_TITLE}
+        </span>
       </div>
       {controls.end.length > 0 ? (
-        <div className={group}>{controls.end.map(button)}</div>
+        <div {...group}>{controls.end.map(button)}</div>
       ) : null}
     </header>
   );

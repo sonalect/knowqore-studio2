@@ -37,3 +37,5 @@ While the major version is 0, a breaking change bumps the minor version.
 - mimalloc as the Rust global allocator.
 - The Astryx CLI (`bun run astryx`) and its agent guide in
   `.claude/rules/astryx.md`.
+- The StyleX compiler for Studio's own styles, so screens can start from
+  Astryx templates that use StyleX; the title bar is styled with it.
