@@ -12,3 +12,9 @@ While the major version is 0, a breaking change bumps the minor version.
 - The application skeleton on Tauri 2, React, and TypeScript (Vite, bun):
   `bun run tauri dev` opens the template window.
 - Every dependency pinned to an exact version, TypeScript 7 included.
+- `bun run check`, the whole gate in one command: Biome and markdownlint,
+  the TypeScript check and the Vite build, then `cargo test`,
+  `cargo clippy`, and `cargo fmt --check`. `bun run format` fixes what the
+  formatters can.
+- `bun install` keeps the two-day quarantine on npm packages
+  (`minimumReleaseAge` in `bunfig.toml`).

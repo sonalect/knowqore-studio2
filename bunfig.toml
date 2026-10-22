@@ -1,0 +1,5 @@
+# Two-day quarantine for npm packages (.claude/rules/dependency-quarantine.md):
+# bun install resolves every package, transitive ones included, to versions
+# published at least this many seconds ago.
+[install]
+minimumReleaseAge = 172800

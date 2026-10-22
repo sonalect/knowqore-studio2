@@ -1,30 +1,34 @@
 # Run commands from this repository
 
-The repository has two roots, and every command runs in its own:
-
-- `bun` commands (the frontend and the Tauri CLI): the clone root, the
-  directory with `package.json`.
-- `cargo` commands (the Rust side): `src-tauri/`, the directory with
-  `Cargo.toml`. Or pass `--manifest-path src-tauri/Cargo.toml` from the
-  clone root.
+Run every `bun` command from the clone root, the directory with
+`package.json`. The scripts reach the Rust side with
+`--manifest-path src-tauri/Cargo.toml`. A direct `cargo` command runs in
+`src-tauri/`, the directory with `Cargo.toml`, or from the clone root with
+`--manifest-path src-tauri/Cargo.toml`.
 
 The Bash tool's working directory persists between calls and may have
 drifted (another repository may be the session's primary directory), so
 `cd` by absolute path in the same command when unsure. Never run them from
 a sibling project, a scratch or tmp directory, or another subdirectory.
 
-## Fast loop and gate
+## Commands
 
-- `bun run tauri dev`: run Studio (Vite dev server and the Rust app). It
-  does not exit by itself: run it only when asked, with the Bash tool's
-  `run_in_background`, and stop it when done (`stoppable-work.md`).
-- The gate, run before a commit (`commit-after-tests.md`):
-  - `bun run build`: TypeScript check (`tsc`) and the Vite build;
-  - `cargo test` in `src-tauri/`;
-  - `cargo clippy --all-targets --all-features -- -D warnings` in
-    `src-tauri/`;
-  - `cargo fmt --check` in `src-tauri/`.
-- `bun install` after a change to `package.json`; it updates `bun.lock`.
+| Command | What it does |
+| - | - |
+| `bun run check` | The gate before a commit (`commit-after-tests.md`): lint, build, Rust checks |
+| `bun run lint` | Biome and markdownlint |
+| `bun run build` | `tsc` and the Vite build |
+| `bun run check:rust` | `cargo test`, `cargo clippy -D warnings`, `cargo fmt --check` |
+| `bun run format` | Biome fixes and `cargo fmt` |
+| `bun run tauri dev` | Run Studio (Vite dev server and the Rust app) |
+| `bun install` | After a change to `package.json`; updates `bun.lock` |
+
+`bun run tauri dev` does not exit by itself: run it only when asked, with
+the Bash tool's `run_in_background`, and stop it when done
+(`stoppable-work.md`).
+
+`bun install` keeps the two-day quarantine by itself (`minimumReleaseAge`
+in `bunfig.toml`); Cargo has no such setting (`dependency-quarantine.md`).
 
 ## No sandbox
 

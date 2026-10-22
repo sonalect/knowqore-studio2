@@ -6,13 +6,12 @@ paths:
 
 # No warnings by default
 
-Rustc and Clippy warnings are not allowed. `cargo test` and
-`cargo clippy --all-targets --all-features -- -D warnings` must be clean.
-`tsc` (`bun run build`) must be clean too.
+Rustc and Clippy warnings are not allowed. `bun run check` must be clean:
+`cargo test`, `cargo clippy -D warnings`, `tsc`, and Biome.
 
 Do not silence warnings with `allow` on hand-written code, and do not
-silence TypeScript with `// @ts-ignore`, `// @ts-expect-error`, or `any`
-to get past an error.
+silence TypeScript with `// @ts-ignore`, `// @ts-expect-error`, `any`, or
+a `biome-ignore` comment to get past an error.
 
 ## Exception: generated files
 

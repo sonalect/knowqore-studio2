@@ -51,7 +51,7 @@ Set the same `MAJOR.MINOR.PATCH` everywhere:
   (`[Unreleased]` compare from the new tag, `[MAJOR.MINOR.PATCH]` release URL)
 
 Refresh the crate's own entry in `src-tauri/Cargo.lock` (`cargo check` in
-`src-tauri/`), and run the gate (`commit-after-tests.md`).
+`src-tauri/`), and run `bun run check` (`commit-after-tests.md`).
 
 ## Release
 

@@ -23,7 +23,7 @@ owner switch.
 
 | Agent | Model | Use for |
 | - | - | - |
-| `runner` | Haiku | the gate (`bun run build`, `cargo test` / `clippy` / `fmt`), `bun install`, any long or noisy command; returns failures only |
+| `runner` | Haiku | the gate (`bun run check` or one of its parts), `bun install`, any long or noisy command; returns failures only |
 | `scout` | Haiku | where X is defined / used, lists by criterion, summaries of large files or logs, a consumer's use of an API, dependency publish dates |
 | `mechanic` | Haiku | renames across files, dependency sorting, exact replacements — fully specified, volume only |
 | `implementer` | Sonnet | from an Opus session: a specified change across files, with tests and the docs pass |

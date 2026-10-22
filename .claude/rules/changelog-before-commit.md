@@ -31,7 +31,8 @@ wrong, edit it.
 - The commit is **only** `CHANGELOG.md`.
 - rustfmt / comment-only / agent rules (`.claude/**`, `.cursor/**`) with
   no runtime or `DESIGN.md` change.
-- Clippy / rustc / tsc lint-only: same runtime behaviour.
+- Clippy / rustc / tsc / Biome / markdownlint lint-only: same runtime
+  behaviour.
 - The owner explicitly waived the changelog for this commit.
 
 Do not skip for "small" changes to a screen, an error message, or what

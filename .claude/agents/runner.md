@@ -27,8 +27,8 @@ not fix anything and you do not edit files.
 
 1. The command(s) run and the exit code of each.
 2. On success: one line per command. Nothing else.
-3. On failure: for each failing test / lint / type error (clippy, rustfmt,
-   and tsc included), its name, `file:line`, and the error message,
-   verbatim and trimmed to the lines that matter. No full logs, no build
+3. On failure: for each failing test / lint / type error (clippy,
+   rustfmt, tsc, Biome, and markdownlint included), its name,
+   `file:line`, and the error message, verbatim and trimmed to the lines that matter. No full logs, no build
    progress, no warnings that did not fail the run.
 4. No guesses about the cause unless the brief asks for them.

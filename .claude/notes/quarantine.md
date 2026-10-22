@@ -9,6 +9,8 @@ Direct dependencies held back (`package.json`, `src-tauri/Cargo.toml`):
 | - | - | - | - | - |
 | `@tauri-apps/cli` (npm) | 2.12.3 | 2.12.4 | 21 Oct 12:20 | 23 Oct 12:20 |
 | `vite` (npm) | 8.3.4 | 8.3.5 | 21 Oct 06:38 | 23 Oct 06:38 |
+| `@biomejs/biome` (npm) | 2.5.15 | 2.6.2 | 21 Oct 11:08 | 23 Oct 11:08 |
+| `markdownlint-cli2` (npm) | 0.23.3 | 0.24.0 | 21 Oct 06:59 | 23 Oct 06:59 |
 | `tauri` | 2.12.4 | 2.12.5 | 21 Oct 11:54 | 23 Oct 11:54 |
 | `tauri-build` | 2.7.3 | 2.7.4 | 21 Oct 11:53 | 23 Oct 11:53 |
 
@@ -33,9 +35,10 @@ The bump changed no other entry of `Cargo.lock`.
 
 **How to apply:** after the dates above, bump the direct pins in
 `package.json` and `src-tauri/Cargo.toml` (`tauri` and `tauri-build`
-together), then `bun install --minimum-release-age=172800` and
+together),
+then `bun install` (it keeps the quarantine through `bunfig.toml`) and
 `cargo update` in `src-tauri/`. Check every `Cargo.lock` entry again: Cargo
 has no release-age filter, so a refresh can pull versions younger than two
 days; hold those back with `cargo update -p <crate> --precise <version>`,
 dependents before their dependencies (`tinystr` before `zerovec`, `zerovec`
-before `yoke`). Then run the gate.
+before `yoke`). Then run `bun run check`.
