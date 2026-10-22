@@ -26,6 +26,7 @@ all = { level = "warn", priority = -1 }
 tauri-build = { version = "=2.7.3", features = [] }
 
 [dependencies]
+futures-lite = "=2.6.1"
 # The store and its contract are crates of Knowqore's workspace, taken from
 # one commit; Cargo finds each by its name.
 knowqore-store-scheda = { git = "https://github.com/sonalect/knowqore", rev = "99b510c9476725a4df0e8cbde5917e134117f94b" }
@@ -39,7 +40,6 @@ tauri = { version = "=2.12.4", features = [] }
 tauri-plugin-opener = "=2.7.2"
 
 [target.'cfg(not(windows))'.dependencies]
-futures-lite = "=2.6.1"
 mundy = { version = "=0.2.3", default-features = false, features = [
     "accent-color",
     "async-io",

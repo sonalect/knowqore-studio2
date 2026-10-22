@@ -25,8 +25,11 @@ While the major version is 0, a breaking change bumps the minor version.
   an open screen says why and takes the folder to open instead.
 - A first skeleton of the Lessons screen: a side navigation with labeled
   groups and icons, a header with breadcrumbs, summary tiles, the table of
-  Lessons in a card, and a details card for the clicked row, all with
-  placeholder content.
+  Lessons in a card, and a details card for the clicked row.
+- The Lessons table shows the Vault's Lessons, newest first, sortable by
+  every column. It reads only the rows in view as the person scrolls, so a
+  Vault of any size stays responsive, and the details card shows the
+  clicked Lesson.
 - A title bar that looks native on each system: the system's own on macOS;
   a Windows 11 caption bar on the Mica backdrop on Windows, with Snap
   Layouts on its maximize button; on Linux a bar of Studio's own with

@@ -14,17 +14,10 @@ import {
   SideNavItem,
   SideNavSection,
 } from "@astryxdesign/core/SideNav";
-import { HStack, VStack } from "@astryxdesign/core/Stack";
-import {
-  proportional,
-  Table,
-  type TableColumn,
-  type TablePlugin,
-} from "@astryxdesign/core/Table";
+import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { Toolbar } from "@astryxdesign/core/Toolbar";
 import { TreeList } from "@astryxdesign/core/TreeList";
-import { colorVars } from "@astryxdesign/core/theme/tokens.stylex";
 import * as stylex from "@stylexjs/stylex";
 import {
   BookOpen,
@@ -35,33 +28,10 @@ import {
   Settings,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { formatUpdated, type LessonRow } from "../lessons";
 import type { OpenWorkspace } from "../workspace";
-
-// Placeholder rows: the skeleton shows the shape of the screen, not the
-// Vault's Lessons yet.
-interface LessonRow extends Record<string, unknown> {
-  id: string;
-  title: string;
-  kind: string;
-  source: string;
-  updated: string;
-}
-
-const ROWS: LessonRow[] = Array.from({ length: 12 }, (_, index) => ({
-  id: `lesson-${index + 1}`,
-  title: `Lesson ${index + 1}`,
-  kind: "—",
-  source: "—",
-  updated: "—",
-}));
-
-const COLUMNS: TableColumn<LessonRow>[] = [
-  { key: "title", header: "Lesson", width: proportional(3) },
-  { key: "kind", header: "Kind", width: proportional(1) },
-  { key: "source", header: "Source", width: proportional(2) },
-  { key: "updated", header: "Updated", width: proportional(1) },
-];
+import { LessonsTable } from "./LessonsTable";
 
 // Placeholder branches of the tree on the left.
 const SOURCES = [
@@ -69,12 +39,20 @@ const SOURCES = [
   { label: "Source B", topics: ["Topic 3"] },
 ];
 
-// Placeholder summary tiles above the table.
-const SUMMARY = [
-  { label: "Lessons", value: "—", icon: BookOpen },
-  { label: "Sources", value: "—", icon: FolderGit2 },
-  { label: "Last update", value: "—", icon: Clock },
-];
+const NUMBER = new Intl.NumberFormat();
+
+// Summary tiles above the table; only the Lessons count is real yet.
+function summary(total: number | null) {
+  return [
+    {
+      label: "Lessons",
+      value: total === null ? "—" : NUMBER.format(total),
+      icon: BookOpen,
+    },
+    { label: "Sources", value: "—", icon: FolderGit2 },
+    { label: "Last update", value: "—", icon: Clock },
+  ];
+}
 
 const styles = stylex.create({
   // AppShell fills the viewport by default; here it sits under Studio's
@@ -82,40 +60,13 @@ const styles = stylex.create({
   shell: {
     height: "100%",
   },
-  row: {
-    cursor: "default",
-  },
-  selectedRow: {
-    boxShadow: `inset 0 0 0 100vmax ${colorVars["--color-accent-muted"]}`,
-  },
 });
 
-/** A click on a row selects it; the selected row is washed with the accent. */
-function useRowSelection(
-  selectedId: string | null,
-  onSelect: (id: string) => void,
-): TablePlugin<LessonRow> {
-  return useMemo(
-    () => ({
-      transformBodyRow: (props, item) => ({
-        ...props,
-        xstyle: [
-          ...props.xstyle,
-          styles.row,
-          item.id === selectedId && styles.selectedRow,
-        ],
-        htmlProps: {
-          ...props.htmlProps,
-          "aria-selected": item.id === selectedId ? true : undefined,
-          onClick: () => onSelect(item.id),
-        },
-      }),
-    }),
-    [selectedId, onSelect],
-  );
-}
-
-function SummaryTile({ label, value, icon }: (typeof SUMMARY)[number]) {
+function SummaryTile({
+  label,
+  value,
+  icon,
+}: ReturnType<typeof summary>[number]) {
   return (
     <Card padding={4}>
       <VStack gap={2}>
@@ -126,6 +77,15 @@ function SummaryTile({ label, value, icon }: (typeof SUMMARY)[number]) {
         <Heading level={2}>{value}</Heading>
       </VStack>
     </Card>
+  );
+}
+
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <VStack gap={0.5}>
+      <Text color="secondary">{label}</Text>
+      <Text>{value}</Text>
+    </VStack>
   );
 }
 
@@ -140,7 +100,7 @@ function LessonDetails({
     <Card padding={4}>
       <VStack gap={4}>
         <HStack gap={2} vAlign="center" hAlign="between">
-          <Heading level={3}>{lesson.title}</Heading>
+          <Heading level={3}>Lesson</Heading>
           <IconButton
             label="Close details"
             size="sm"
@@ -149,11 +109,14 @@ function LessonDetails({
             onClick={onClose}
           />
         </HStack>
-        <Text color="secondary">The details of the Lesson go here.</Text>
+        <Text>{lesson.statement}</Text>
         <Divider />
-        <Card variant="muted" padding={0} width="100%" height={96} />
-        <Card variant="muted" padding={0} width="100%" height={160} />
-        <Card variant="muted" padding={0} width="100%" height={64} />
+        <Fact label="Kind" value={lesson.kind} />
+        <Fact label="Status" value={lesson.status} />
+        <Fact label="Transfer" value={lesson.transfer} />
+        <Fact label="Polarity" value={lesson.polarity} />
+        <Fact label="Updated" value={formatUpdated(lesson.updatedAt)} />
+        <Fact label="Id" value={lesson.id} />
       </VStack>
     </Card>
   );
@@ -161,10 +124,9 @@ function LessonDetails({
 
 /** The Lessons of the open workspace: a tree, a table, and the details of the selected Lesson. */
 export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<LessonRow | null>(null);
+  const [total, setTotal] = useState<number | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
-  const selection = useRowSelection(selectedId, setSelectedId);
-  const selected = ROWS.find((row) => row.id === selectedId) ?? null;
 
   return (
     <AppShell
@@ -239,24 +201,22 @@ export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
           />
         }
         content={
-          <LayoutContent padding={4}>
-            <VStack gap={4}>
+          <LayoutContent padding={4} isScrollable={false}>
+            <VStack gap={4} height="100%">
               <Grid columns={3} gap={4}>
-                {SUMMARY.map((tile) => (
+                {summary(total).map((tile) => (
                   <SummaryTile key={tile.label} {...tile} />
                 ))}
               </Grid>
-              <Card padding={0}>
-                <Table
-                  data={ROWS}
-                  columns={COLUMNS}
-                  idKey="id"
-                  density="compact"
-                  hasHover
-                  textOverflow="truncate"
-                  plugins={{ selection }}
-                />
-              </Card>
+              <StackItem size="fill">
+                <Card padding={0} height="100%">
+                  <LessonsTable
+                    selectedId={selected?.id ?? null}
+                    onSelect={setSelected}
+                    onTotal={setTotal}
+                  />
+                </Card>
+              </StackItem>
             </VStack>
           </LayoutContent>
         }
@@ -270,7 +230,7 @@ export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
             >
               <LessonDetails
                 lesson={selected}
-                onClose={() => setSelectedId(null)}
+                onClose={() => setSelected(null)}
               />
             </LayoutPanel>
           ) : undefined

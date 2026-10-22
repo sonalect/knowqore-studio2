@@ -1,3 +1,4 @@
+mod lessons;
 #[cfg(windows)]
 mod snap_layout;
 mod system_appearance;
@@ -19,6 +20,7 @@ pub fn run() {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
+            lessons::lessons_page,
             system_appearance::system_appearance,
             system_style::system_style,
             title_drag::set_title_drag_region,
@@ -28,6 +30,7 @@ pub fn run() {
         .setup(|app| {
             use tauri::Manager;
             workspace::manage(app.handle());
+            lessons::manage(app.handle());
             app.manage(window_controls::system_controls());
             #[cfg(windows)]
             {

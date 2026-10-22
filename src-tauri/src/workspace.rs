@@ -68,6 +68,16 @@ pub enum WorkspaceStatus {
 #[derive(Default)]
 pub struct OpenStore(Mutex<Option<StoreRef>>);
 
+impl OpenStore {
+    /// The store of the open workspace; `None` before one has opened.
+    pub fn current(&self) -> Option<StoreRef> {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+}
+
 /// Tauri command `open_workspace`: opens `folder`, or the default location
 /// when it is `None`, and keeps its store for the screens. A folder that
 /// cannot be opened leaves the store that was open before.
