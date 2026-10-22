@@ -12,7 +12,7 @@ import { useMemo, useState } from "react";
 import { useSystemAppearance } from "./appearance";
 import reactLogo from "./assets/react.svg";
 import { AstryxLogo } from "./components/astryx-logo";
-import { TitleBar } from "./components/title-bar";
+import { TitleBar, type WindowControls } from "./components/title-bar";
 import { drawsOwnTitleBar } from "./platform";
 
 function accentTheme(accent: string) {
@@ -26,7 +26,7 @@ function accentTheme(accent: string) {
   });
 }
 
-function App() {
+function App({ windowControls }: { windowControls: WindowControls }) {
   const appearance = useSystemAppearance();
   const [greetMsg, setGreetMsg] = useState("");
   const [name, setName] = useState("");
@@ -42,7 +42,7 @@ function App() {
   return (
     <Theme theme={theme} mode={appearance.dark ? "dark" : "light"}>
       <VStack gap={0} height="100svh">
-        {drawsOwnTitleBar ? <TitleBar /> : null}
+        {drawsOwnTitleBar ? <TitleBar controls={windowControls} /> : null}
         <StackItem size="fill">
           <Center height="100%" padding={6}>
             <VStack gap={6} hAlign="center" maxWidth={640}>

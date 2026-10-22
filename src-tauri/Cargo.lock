@@ -1898,6 +1898,7 @@ dependencies = [
 name = "knowqore-studio"
 version = "0.1.0"
 dependencies = [
+ "gtk",
  "mimalloc",
  "serde",
  "serde_json",

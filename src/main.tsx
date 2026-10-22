@@ -3,6 +3,7 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { initAppearance, revealWindow } from "./appearance";
+import { loadWindowControls } from "./components/title-bar";
 import "@astryxdesign/core/reset.css";
 import "@astryxdesign/core/astryx.css";
 import "@astryxdesign/theme-neutral/theme.css";
@@ -15,13 +16,16 @@ void (async () => {
     void revealWindow();
   }, 3000);
   try {
-    await initAppearance();
+    const [, windowControls] = await Promise.all([
+      initAppearance(),
+      loadWindowControls(),
+    ]);
     const root = document.getElementById("root");
     if (root) {
       flushSync(() => {
         createRoot(root).render(
           <React.StrictMode>
-            <App />
+            <App windowControls={windowControls} />
           </React.StrictMode>,
         );
       });

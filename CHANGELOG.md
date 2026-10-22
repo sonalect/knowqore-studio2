@@ -20,9 +20,10 @@ While the major version is 0, a breaking change bumps the minor version.
   (`minimumReleaseAge` in `bunfig.toml`).
 - The Astryx design system (0.7.3, Neutral theme) draws the window: a
   welcome screen in place of the template page.
-- A native window and title bar on each system: the system's own on macOS
-  and Linux, a Windows 11 caption bar on the Mica backdrop on Windows, with
-  Snap Layouts on its maximize button.
+- A title bar that looks native on each system: the system's own on macOS;
+  a Windows 11 caption bar on the Mica backdrop on Windows, with Snap
+  Layouts on its maximize button; on Linux a bar of Studio's own with
+  GNOME-style round buttons, placed as the desktop's button layout says.
 - The theme follows the system's light or dark mode, and on Windows its
   accent color and Mica backdrop, while Studio runs.
 - The window reopens where it was left, and is pulled back onto a visible

@@ -1,6 +1,8 @@
 #[cfg(windows)]
 mod snap_layout;
 mod system_appearance;
+mod title_drag;
+mod window_controls;
 mod window_state;
 
 use mimalloc::MiMalloc;
@@ -22,10 +24,13 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             greet,
-            system_appearance::system_appearance
+            system_appearance::system_appearance,
+            title_drag::set_title_drag_region,
+            window_controls::window_controls
         ])
         .setup(|app| {
             use tauri::Manager;
+            app.manage(window_controls::system_controls());
             #[cfg(windows)]
             {
                 system_appearance::watch(app.handle());
@@ -36,6 +41,14 @@ pub fn run() {
                     system_appearance::apply_window_theme(&window);
                 }
                 window_state::attach(&window);
+                #[cfg(target_os = "linux")]
+                {
+                    let drag = title_drag::TitleDrag::default();
+                    app.manage(drag.clone());
+                    if let Err(error) = title_drag::attach(&window, drag) {
+                        eprintln!("failed to attach the title bar drag: {error}");
+                    }
+                }
                 #[cfg(windows)]
                 if let Err(error) = snap_layout::attach(&window) {
                     eprintln!("failed to attach Snap Layout overlay: {error}");

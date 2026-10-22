@@ -16,8 +16,8 @@ function detectPlatform(): Platform {
 export const platform: Platform = detectPlatform();
 
 /**
- * Whether the app draws its own title bar. Only on Windows: there the window
- * is undecorated so the WinUI-style bar can sit on the Mica backdrop. macOS
- * and Linux keep the system's own title bar.
+ * Whether the app draws its own title bar, so it can hold the app's own
+ * buttons. On Windows and Linux the window is undecorated and the bar follows
+ * the system's look; macOS keeps its own title bar.
  */
-export const drawsOwnTitleBar = platform === "windows";
+export const drawsOwnTitleBar = platform !== "macos";

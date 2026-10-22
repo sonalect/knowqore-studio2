@@ -109,6 +109,60 @@ html:not([data-backdrop="mica"]) {
   color: var(--color-on-dark);
 }
 
+.title-bar--linux {
+  position: relative;
+  height: 36px;
+  border-bottom: 1px solid var(--color-border-emphasized);
+}
+
+/* GNOME centers the title over the whole bar, whatever the buttons. */
+.title-bar--linux .title-bar__title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 60%;
+  font-weight: 600;
+}
+
+.window-controls {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: 0 var(--spacing-2);
+}
+
+.window-control {
+  appearance: none;
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background-color: var(--color-overlay-hover);
+  color: inherit;
+  cursor: default;
+  line-height: 0;
+}
+
+.window-control:hover {
+  background-color: var(--color-overlay-pressed);
+}
+
+.window-control:active {
+  background-color: var(--color-overlay-pressed);
+  filter: brightness(0.9);
+}
+
+.window-control__icon {
+  width: 16px;
+  height: 16px;
+}
+
 .caption-icon {
   width: var(--spacing-3);
   height: var(--spacing-3);
