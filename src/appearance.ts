@@ -10,6 +10,17 @@ export type SystemAppearance = {
   dark: boolean;
 };
 
+/** The accent color and interface font of Linux and macOS; empty when unknown. */
+export type SystemStyle = {
+  accent: string;
+  font: string;
+};
+
+const NO_STYLE: SystemStyle = { accent: "", font: "" };
+
+// Read before the first render, so the page starts in the system's style.
+let initialStyle: SystemStyle = NO_STYLE;
+
 export function isTauriRuntime() {
   return "__TAURI_INTERNALS__" in globalThis;
 }
@@ -73,8 +84,23 @@ export function getPrefersDark() {
   return window.matchMedia(darkQuery).matches;
 }
 
+// Outside Windows the `system_style` command reports the accent and font.
+const readsSystemStyle = isTauriRuntime() && platform !== "windows";
+
+async function loadSystemStyle() {
+  if (!readsSystemStyle) {
+    return;
+  }
+  try {
+    initialStyle = await invoke<SystemStyle>("system_style");
+  } catch {
+    initialStyle = NO_STYLE;
+  }
+}
+
 export async function initAppearance() {
   applyDocumentTheme(getPrefersDark());
+  await loadSystemStyle();
   // Before the Theme mounts this is the core Astryx shade; App syncs the
   // theme's own once it renders.
   syncNativeBackground();
@@ -144,6 +170,37 @@ export function useSystemAppearance(): SystemAppearance {
   }, []);
 
   return appearance;
+}
+
+/**
+ * The accent color and interface font of Linux and macOS, as read at startup
+ * and each time the window regains focus. Empty on Windows.
+ */
+export function useSystemStyle(): SystemStyle {
+  const [style, setStyle] = useState<SystemStyle>(() => initialStyle);
+
+  useEffect(() => {
+    if (!readsSystemStyle) {
+      return;
+    }
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    void listen<SystemStyle>("system-style-changed", (event) => {
+      setStyle(event.payload);
+    }).then((stop) => {
+      if (disposed) {
+        stop();
+      } else {
+        unlisten = stop;
+      }
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+
+  return style;
 }
 
 export async function revealWindow() {

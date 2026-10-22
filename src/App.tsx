@@ -9,30 +9,80 @@ import { defineTheme, Theme } from "@astryxdesign/core/theme";
 import { neutralTheme } from "@astryxdesign/theme-neutral";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
-import { syncNativeBackground, useSystemAppearance } from "./appearance";
+import {
+  syncNativeBackground,
+  useSystemAppearance,
+  useSystemStyle,
+} from "./appearance";
 import reactLogo from "./assets/react.svg";
 import { AstryxLogo } from "./components/astryx-logo";
 import { TitleBar, type WindowControls } from "./components/title-bar";
 import { drawsOwnTitleBar } from "./platform";
 
-function accentTheme(accent: string) {
-  if (!/^#[0-9a-fA-F]{6}$/.test(accent)) {
+// Behind the system font, in case it is missing from the webview.
+const FONT_FALLBACKS = "system-ui, sans-serif";
+
+// Below this contrast ratio against white, text on the accent turns black.
+const MIN_CONTRAST_WITH_WHITE = 3;
+
+// White or black, whichever reads on `accent` (`#rrggbb`), as the system's own
+// buttons do.
+function onAccent(accent: string) {
+  const linear = (offset: number) => {
+    const value = Number.parseInt(accent.slice(offset, offset + 2), 16) / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance =
+    0.2126 * linear(1) + 0.7152 * linear(3) + 0.0722 * linear(5);
+  return 1.05 / (luminance + 0.05) >= MIN_CONTRAST_WITH_WHITE
+    ? "#ffffff"
+    : "#000000";
+}
+
+// The Neutral theme with the system's accent color and interface font, where
+// the system reports them. Only the accent tokens change: seeding the palette
+// with `color.accent` would also tint the backgrounds, borders, and text,
+// which no system does. The accent stays the system's exact color, as on its
+// own buttons.
+function systemTheme(accent: string, font: string) {
+  const hasAccent = /^#[0-9a-fA-F]{6}$/.test(accent);
+  if (!hasAccent && !font) {
     return neutralTheme;
   }
+  const role = { family: font, fallbacks: FONT_FALLBACKS };
   return defineTheme({
-    name: "system-accent",
+    name: "system",
     extends: neutralTheme,
-    color: { accent },
+    ...(hasAccent
+      ? {
+          tokens: {
+            "--color-accent": accent,
+            "--color-on-accent": onAccent(accent),
+            // As Astryx derives them from a seeded accent.
+            "--color-accent-muted": [
+              "color-mix(in srgb, var(--color-accent) 20%, transparent)",
+              "color-mix(in srgb, var(--color-accent) 25%, transparent)",
+            ],
+            "--color-text-accent": "var(--color-accent)",
+            "--color-icon-accent": "var(--color-accent)",
+          },
+        }
+      : {}),
+    ...(font ? { typography: { body: role, heading: role } } : {}),
   });
 }
 
 function App({ windowControls }: { windowControls: WindowControls }) {
   const appearance = useSystemAppearance();
+  const style = useSystemStyle();
+  // Windows reports its accent with the appearance, Linux and macOS with the
+  // style.
+  const accent = appearance.accent || style.accent;
   const [greetMsg, setGreetMsg] = useState("");
   const [name, setName] = useState("");
   const theme = useMemo(
-    () => accentTheme(appearance.accent),
-    [appearance.accent],
+    () => systemTheme(accent, style.font),
+    [accent, style.font],
   );
 
   // After every render: the Theme below has applied its tokens to the page

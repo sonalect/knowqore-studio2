@@ -1,6 +1,7 @@
 #[cfg(windows)]
 mod snap_layout;
 mod system_appearance;
+mod system_style;
 mod title_drag;
 mod window_controls;
 mod window_state;
@@ -25,6 +26,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             system_appearance::system_appearance,
+            system_style::system_style,
             title_drag::set_title_drag_region,
             window_controls::window_controls
         ])
@@ -41,6 +43,8 @@ pub fn run() {
                     system_appearance::apply_window_theme(&window);
                 }
                 window_state::attach(&window);
+                #[cfg(not(windows))]
+                system_style::attach(&window);
                 #[cfg(target_os = "linux")]
                 {
                     let drag = title_drag::TitleDrag::default();

@@ -24,8 +24,11 @@ While the major version is 0, a breaking change bumps the minor version.
   a Windows 11 caption bar on the Mica backdrop on Windows, with Snap
   Layouts on its maximize button; on Linux a bar of Studio's own with
   GNOME-style round buttons, placed as the desktop's button layout says.
-- The theme follows the system's light or dark mode, and on Windows its
-  accent color and Mica backdrop, while Studio runs.
+- The theme follows the system's light or dark mode and its accent color,
+  on Windows with the Mica backdrop as well. On Linux the interface uses the
+  desktop's font. Buttons and other accented controls take the system's
+  exact accent; a change in the system settings shows when the window
+  regains focus.
 - No white flash at startup or on resize: the window opens in the theme's
   background color even before the page has drawn.
 - The window reopens where it was left, and is pulled back onto a visible
