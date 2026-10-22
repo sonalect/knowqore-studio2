@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useState } from "react";
 import { platform } from "./platform";
@@ -25,6 +26,37 @@ function applyDocumentTheme(isDark: boolean) {
   document.documentElement.style.colorScheme = isDark ? "dark" : "light";
 }
 
+// The page's background as an opaque RGBA color, or null if it is not an
+// opaque `rgb(...)` color.
+function pageBackground(): [number, number, number, number] | null {
+  const color = getComputedStyle(document.documentElement).backgroundColor;
+  const match = /^rgb\((\d+), (\d+), (\d+)\)$/.exec(color);
+  if (!match) {
+    return null;
+  }
+  return [Number(match[1]), Number(match[2]), Number(match[3]), 255];
+}
+
+let syncedBackground = "";
+
+/**
+ * Outside Windows the native window and webview start white. Paints them
+ * with the page's own background, so a frame the page has not drawn yet, or
+ * the edge a resize uncovers, never flashes white. Call it once the Astryx
+ * theme is applied; it does nothing while the color stays the same.
+ */
+export function syncNativeBackground() {
+  if (!isTauriRuntime() || platform === "windows") {
+    return;
+  }
+  const color = pageBackground();
+  const key = color?.join(",") ?? "";
+  if (color && key !== syncedBackground) {
+    syncedBackground = key;
+    void getCurrentWebviewWindow().setBackgroundColor(color);
+  }
+}
+
 function applyAppearance(appearance: SystemAppearance) {
   applyDocumentTheme(appearance.dark);
   void getCurrentWindow().setTheme(appearance.dark ? "dark" : "light");
@@ -43,6 +75,9 @@ export function getPrefersDark() {
 
 export async function initAppearance() {
   applyDocumentTheme(getPrefersDark());
+  // Before the Theme mounts this is the core Astryx shade; App syncs the
+  // theme's own once it renders.
+  syncNativeBackground();
 
   if (readsSystemAppearance) {
     try {

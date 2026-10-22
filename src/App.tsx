@@ -8,8 +8,8 @@ import { TextInput } from "@astryxdesign/core/TextInput";
 import { defineTheme, Theme } from "@astryxdesign/core/theme";
 import { neutralTheme } from "@astryxdesign/theme-neutral";
 import { invoke } from "@tauri-apps/api/core";
-import { useMemo, useState } from "react";
-import { useSystemAppearance } from "./appearance";
+import { useEffect, useMemo, useState } from "react";
+import { syncNativeBackground, useSystemAppearance } from "./appearance";
 import reactLogo from "./assets/react.svg";
 import { AstryxLogo } from "./components/astryx-logo";
 import { TitleBar, type WindowControls } from "./components/title-bar";
@@ -34,6 +34,12 @@ function App({ windowControls }: { windowControls: WindowControls }) {
     () => accentTheme(appearance.accent),
     [appearance.accent],
   );
+
+  // After every render: the Theme below has applied its tokens to the page
+  // by now, since children run their effects first.
+  useEffect(() => {
+    syncNativeBackground();
+  });
 
   async function greet() {
     setGreetMsg(await invoke("greet", { name }));

@@ -15,6 +15,8 @@
     "core:window:allow-set-theme",
     "core:window:allow-show",
     "core:window:allow-set-focus",
+    "core:window:allow-set-background-color",
+    "core:webview:allow-set-webview-background-color",
     "core:event:allow-listen",
     "opener:default"
   ]

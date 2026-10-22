@@ -9,6 +9,12 @@
         margin: 0;
         background: transparent;
       }
+      /* The page background of the Neutral theme (--color-background-body),
+         painted before the app's CSS loads. Only Windows shows its Mica
+         backdrop instead. */
+      html:not([data-backdrop="mica"]) {
+        background: light-dark(#f1f1f1, #1b1b1b);
+      }
     </style>
     <script>
       (() => {

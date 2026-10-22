@@ -9,8 +9,22 @@ import "@astryxdesign/core/astryx.css";
 import "@astryxdesign/theme-neutral/theme.css";
 import "./index.css";
 
-// The window starts hidden: show it after the first themed paint, or after
-// three seconds if the appearance never arrives.
+// The window starts hidden: show it once the themed page has had a frame to
+// paint, or after three seconds if the appearance never arrives.
+// Two animation frames: the first is the one that paints the rendered page.
+// A hidden window may get no frames at all, so give up after 100 ms.
+function nextFrame() {
+  return new Promise<void>((resolve) => {
+    const timeout = window.setTimeout(resolve, 100);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.clearTimeout(timeout);
+        resolve();
+      });
+    });
+  });
+}
+
 void (async () => {
   const revealTimeout = window.setTimeout(() => {
     void revealWindow();
@@ -29,6 +43,7 @@ void (async () => {
           </React.StrictMode>,
         );
       });
+      await nextFrame();
     }
   } finally {
     window.clearTimeout(revealTimeout);

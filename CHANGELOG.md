@@ -26,6 +26,8 @@ While the major version is 0, a breaking change bumps the minor version.
   GNOME-style round buttons, placed as the desktop's button layout says.
 - The theme follows the system's light or dark mode, and on Windows its
   accent color and Mica backdrop, while Studio runs.
+- No white flash at startup or on resize: the window opens in the theme's
+  background color even before the page has drawn.
 - The window reopens where it was left, and is pulled back onto a visible
   display if a monitor was unplugged. A window closed maximized reopens
   maximized, and Restore returns it to the size it had before.
