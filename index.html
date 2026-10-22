@@ -2,9 +2,27 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <style>
+      html,
+      body,
+      #root {
+        margin: 0;
+        background: transparent;
+      }
+    </style>
+    <script>
+      (() => {
+        const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.classList.toggle("dark", isDark);
+        document.documentElement.style.colorScheme = isDark ? "dark" : "light";
+        if (navigator.userAgent.includes("Windows")) {
+          document.documentElement.dataset.backdrop = "mica";
+        }
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tauri + React + Typescript</title>
+    <title>Knowqore Studio</title>
   </head>
 
   <body>

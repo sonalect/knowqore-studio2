@@ -1,0 +1,115 @@
+html,
+body,
+#root {
+  margin: 0;
+  height: 100svh;
+  overflow: hidden;
+  background: transparent;
+}
+
+/* Only Windows has a system backdrop (Mica) behind the transparent window;
+   elsewhere the page paints its own. */
+html:not([data-backdrop="mica"]) {
+  background: var(--color-background-body);
+}
+
+.logo {
+  display: block;
+  width: calc(var(--spacing-12) * 2);
+  height: calc(var(--spacing-12) * 2);
+  padding: var(--spacing-4);
+  color: var(--color-icon-primary);
+  will-change: filter;
+  transition: filter var(--duration-medium) var(--ease-standard);
+}
+
+.logo:hover {
+  filter: drop-shadow(0 0 var(--spacing-6) var(--color-accent));
+}
+
+.title-bar {
+  display: flex;
+  height: 32px;
+  flex-shrink: 0;
+  align-items: center;
+  overflow: hidden;
+  color: var(--color-text-primary);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.title-bar,
+.title-bar * {
+  outline: none;
+  box-shadow: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.title-bar__drag {
+  display: flex;
+  height: 100%;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: 0 var(--spacing-3);
+}
+
+.title-bar__icon {
+  width: var(--spacing-4);
+  height: var(--spacing-4);
+  pointer-events: none;
+}
+
+.title-bar__title {
+  overflow: hidden;
+  pointer-events: none;
+  font-family: var(--font-family-body);
+  font-size: var(--text-supporting-size);
+  line-height: var(--text-supporting-leading);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.caption-buttons {
+  display: flex;
+  height: 32px;
+  overflow: hidden;
+}
+
+.caption-button {
+  appearance: none;
+  display: inline-flex;
+  width: 46px;
+  height: 32px;
+  margin: 0;
+  padding: 0;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+  box-shadow: none;
+  color: inherit;
+  cursor: default;
+  line-height: 0;
+  overflow: hidden;
+}
+
+.caption-button:hover,
+.caption-button--active {
+  background-color: var(--color-overlay-hover);
+}
+
+.caption-button--close:hover,
+.caption-button--close:active {
+  background-color: var(--color-background-error-inverted);
+  color: var(--color-on-dark);
+}
+
+.caption-icon {
+  width: var(--spacing-3);
+  height: var(--spacing-3);
+}

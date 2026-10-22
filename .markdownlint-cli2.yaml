@@ -21,3 +21,5 @@ ignores:
   - "src-tauri/gen/**"
   # The agent's Knowqore signals: one line per entry, not tracked.
   - "dogfood/**"
+  # Written by `astryx init` and rewritten by `astryx upgrade`.
+  - ".claude/rules/astryx.md"

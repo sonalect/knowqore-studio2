@@ -13,15 +13,36 @@ edition = "2024"
 name = "knowqore_studio_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[lints.rust]
+# Denied by default. Only the native Windows modules may use `unsafe`
+# (`snap_layout.rs` for Snap Layouts, `system_appearance.rs` for the DWM
+# theme, `window_state.rs` for WINDOWPLACEMENT).
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+
 [build-dependencies]
 tauri-build = { version = "=2.7.3", features = [] }
 
 [dependencies]
+mimalloc = { git = "https://github.com/amsokol/mimalloc", tag = "v3.5.3+1", features = ["override"] }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"
 tauri = { version = "=2.12.4", features = [] }
 tauri-plugin-opener = "=2.7.2"
 
+[target.'cfg(windows)'.dependencies]
+windows = { version = "=0.62.2", features = [
+    "UI_ViewManagement",
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

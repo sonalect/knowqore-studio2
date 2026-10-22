@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      {
+        "title": "Knowqore Studio",
+        "width": 800,
+        "height": 600,
+        "minWidth": 330,
+        "visible": false,
+        "decorations": false,
+        "shadow": true,
+        "transparent": true,
+        "windowEffects": {
+          "effects": [
+            "micaLight",
+            "micaDark"
+          ]
+        }
+      }
+    ]
+  }
+}

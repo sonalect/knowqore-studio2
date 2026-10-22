@@ -31,6 +31,13 @@ quarantine, by the owner's exception (22 October 2026): it only fixes
 RUSTSEC-2026-0384, a race in `tokio::time::Interval` of the yanked 1.54.0.
 The bump changed no other entry of `Cargo.lock`.
 
+`@astryxdesign/core`, `@astryxdesign/theme-neutral`, and
+`@astryxdesign/cli` are pinned at 0.7.3 (published 22 October 17:38–17:53
+UTC), inside the quarantine, by the owner's exception (22 October 2026).
+They were installed with `bun install
+--minimum-release-age-excludes=@astryxdesign/core,@astryxdesign/theme-neutral,@astryxdesign/cli`;
+their own dependencies stayed under the quarantine.
+
 **Why:** the two-day rule (`dependency-quarantine.md`).
 
 **How to apply:** after the dates above, bump the direct pins in
