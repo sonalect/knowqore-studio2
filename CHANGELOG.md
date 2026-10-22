@@ -18,8 +18,15 @@ While the major version is 0, a breaking change bumps the minor version.
   formatters can.
 - `bun install` keeps the two-day quarantine on npm packages
   (`minimumReleaseAge` in `bunfig.toml`).
-- The Astryx design system (0.7.3, Neutral theme) draws the window: a
-  welcome screen in place of the template page.
+- The Astryx design system (0.7.3, Neutral theme) draws the window.
+- At startup Studio opens the workspace at its default location
+  (`~/.knowqore` on Linux and macOS, `%LOCALAPPDATA%\Knowqore` on Windows)
+  through the store, read-only. When it is missing or the store refuses it,
+  an open screen says why and takes the folder to open instead.
+- A first skeleton of the Lessons screen: a side navigation with labeled
+  groups and icons, a header with breadcrumbs, summary tiles, the table of
+  Lessons in a card, and a details card for the clicked row, all with
+  placeholder content.
 - A title bar that looks native on each system: the system's own on macOS;
   a Windows 11 caption bar on the Mica backdrop on Windows, with Snap
   Layouts on its maximize button; on Linux a bar of Studio's own with
@@ -37,5 +44,8 @@ While the major version is 0, a breaking change bumps the minor version.
 - mimalloc as the Rust global allocator.
 - The Astryx CLI (`bun run astryx`) and its agent guide in
   `.claude/rules/astryx.md`.
+- Studio builds with Knowqore's store: the contract `knowqore-stores` and
+  its implementation `knowqore-store-scheda`, from one Knowqore commit.
+  `tokio` follows Knowqore's pin to 1.54.0.
 - The StyleX compiler for Studio's own styles, so screens can start from
   Astryx templates that use StyleX; the title bar is styled with it.

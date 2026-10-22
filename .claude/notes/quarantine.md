@@ -26,10 +26,19 @@ Transitive crates held back in `src-tauri/Cargo.lock` with
 | `icu_*` (seven crates) | 2.3.x | 2.4.0 | 24 Oct 08:56 |
 | `tinystr`, `yoke`, `zerovec`, `zerovec-derive` | 0.8.4, 0.8.3, 0.11.8, 0.11.6 | 0.8.5, 0.8.4, 0.11.9, 0.11.7 | 24 Oct 08:51 |
 
-`tokio` is locked at 1.54.1 (published 21 October 21:05 UTC), inside the
-quarantine, by the owner's exception (22 October 2026): it only fixes
-RUSTSEC-2026-0384, a race in `tokio::time::Interval` of the yanked 1.54.0.
-The bump changed no other entry of `Cargo.lock`.
+`tokio` is locked at 1.54.0, a yanked version, since the store crates came
+in (22 October 2026): Knowqore pins `tokio = "=1.54.0"`, and Cargo takes a
+yanked version only by `cargo update -p tokio --precise 1.54.0`. It carries
+RUSTSEC-2026-0384, a race in `tokio::time::Interval`, fixed in 1.54.1;
+Studio moves when Knowqore does. Before the store, Studio had 1.54.1 by the
+owner's exception.
+
+Crates.io crates the store brings follow Knowqore's `Cargo.lock`. Two that
+the first resolve took newer were set back to Knowqore's versions:
+`pulldown-cmark` 0.13.4 and `arc-swap` 1.9.2. Entries that differ from
+Knowqore's lock are other semver lines the Tauri stack needs (`syn` 1,
+`base64` 0.21, `windows-sys` 0.45, …); Cargo keeps one version per line,
+so they cannot match.
 
 `@astryxdesign/core`, `@astryxdesign/theme-neutral`, and
 `@astryxdesign/cli` are pinned at 0.7.3 (published 22 October 17:38–17:53

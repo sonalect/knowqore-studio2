@@ -5,6 +5,7 @@ mod system_style;
 mod title_drag;
 mod window_controls;
 mod window_state;
+mod workspace;
 
 use mimalloc::MiMalloc;
 
@@ -13,25 +14,20 @@ use mimalloc::MiMalloc;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
-            greet,
             system_appearance::system_appearance,
             system_style::system_style,
             title_drag::set_title_drag_region,
-            window_controls::window_controls
+            window_controls::window_controls,
+            workspace::open_workspace
         ])
         .setup(|app| {
             use tauri::Manager;
+            workspace::manage(app.handle());
             app.manage(window_controls::system_controls());
             #[cfg(windows)]
             {

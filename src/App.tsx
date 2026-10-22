@@ -1,23 +1,19 @@
-import { Button } from "@astryxdesign/core/Button";
 import { Center } from "@astryxdesign/core/Center";
-import { Heading } from "@astryxdesign/core/Heading";
-import { Link } from "@astryxdesign/core/Link";
-import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
+import { StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
-import { TextInput } from "@astryxdesign/core/TextInput";
 import { defineTheme, Theme } from "@astryxdesign/core/theme";
 import { neutralTheme } from "@astryxdesign/theme-neutral";
-import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
 import {
   syncNativeBackground,
   useSystemAppearance,
   useSystemStyle,
 } from "./appearance";
-import reactLogo from "./assets/react.svg";
-import { AstryxLogo } from "./components/astryx-logo";
 import { TitleBar, type WindowControls } from "./components/title-bar";
 import { drawsOwnTitleBar } from "./platform";
+import { LessonsScreen } from "./screens/LessonsScreen";
+import { OpenScreen } from "./screens/OpenScreen";
+import { openWorkspace, type WorkspaceStatus } from "./workspace";
 
 // Behind the system font, in case it is missing from the webview.
 const FONT_FALLBACKS = "system-ui, sans-serif";
@@ -72,14 +68,28 @@ function systemTheme(accent: string, font: string) {
   });
 }
 
+// The status of opening `folder` (the default workspace when left out); a
+// failed command reads as an unreadable folder, with its reason.
+async function openOrReport(folder?: string): Promise<WorkspaceStatus> {
+  try {
+    return await openWorkspace(folder);
+  } catch (error) {
+    return {
+      state: "unreadable",
+      folder: folder ?? "the default workspace",
+      reason: String(error),
+    };
+  }
+}
+
 function App({ windowControls }: { windowControls: WindowControls }) {
   const appearance = useSystemAppearance();
   const style = useSystemStyle();
   // Windows reports its accent with the appearance, Linux and macOS with the
   // style.
   const accent = appearance.accent || style.accent;
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  // `null` while the workspace is being opened.
+  const [workspace, setWorkspace] = useState<WorkspaceStatus | null>(null);
   const theme = useMemo(
     () => systemTheme(accent, style.font),
     [accent, style.font],
@@ -91,8 +101,22 @@ function App({ windowControls }: { windowControls: WindowControls }) {
     syncNativeBackground();
   });
 
-  async function greet() {
-    setGreetMsg(await invoke("greet", { name }));
+  // At startup Studio opens the default workspace; only when that fails does
+  // the person choose a folder.
+  useEffect(() => {
+    let isCurrent = true;
+    void openOrReport().then((status) => {
+      if (isCurrent) {
+        setWorkspace(status);
+      }
+    });
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  async function open(folder: string) {
+    setWorkspace(await openOrReport(folder));
   }
 
   return (
@@ -100,49 +124,15 @@ function App({ windowControls }: { windowControls: WindowControls }) {
       <VStack gap={0} height="100svh">
         {drawsOwnTitleBar ? <TitleBar controls={windowControls} /> : null}
         <StackItem size="fill">
-          <Center height="100%" padding={6}>
-            <VStack gap={6} hAlign="center" maxWidth={640}>
-              <Heading level={1}>Welcome to Knowqore Studio</Heading>
-              <HStack gap={4} hAlign="center" wrap="wrap">
-                <Link href="https://vite.dev" isExternalLink label="Vite">
-                  <img src="/vite.svg" className="logo" alt="" />
-                </Link>
-                <Link href="https://tauri.app" isExternalLink label="Tauri">
-                  <img src="/tauri.svg" className="logo" alt="" />
-                </Link>
-                <Link href="https://react.dev" isExternalLink label="React">
-                  <img src={reactLogo} className="logo" alt="" />
-                </Link>
-                <Link
-                  href="https://astryx.atmeta.com"
-                  isExternalLink
-                  label="Astryx"
-                >
-                  <AstryxLogo className="logo" />
-                </Link>
-              </HStack>
-              <Text color="secondary">
-                Click on the Tauri, Vite, React, and Astryx logos to learn more.
-              </Text>
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void greet();
-                }}
-              >
-                <HStack gap={2} hAlign="center" vAlign="end">
-                  <TextInput
-                    label="Name"
-                    placeholder="Enter a name..."
-                    value={name}
-                    onChange={setName}
-                  />
-                  <Button type="submit" variant="primary" label="Greet" />
-                </HStack>
-              </form>
-              {greetMsg ? <Text>{greetMsg}</Text> : null}
-            </VStack>
-          </Center>
+          {workspace === null ? (
+            <Center height="100%">
+              <Text color="secondary">Opening the workspace…</Text>
+            </Center>
+          ) : workspace.state === "open" ? (
+            <LessonsScreen workspace={workspace} />
+          ) : (
+            <OpenScreen status={workspace} onOpen={open} />
+          )}
         </StackItem>
       </VStack>
     </Theme>

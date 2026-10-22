@@ -12,17 +12,3 @@ body,
 html:not([data-backdrop="mica"]) {
   background: var(--color-background-body);
 }
-
-.logo {
-  display: block;
-  width: calc(var(--spacing-12) * 2);
-  height: calc(var(--spacing-12) * 2);
-  padding: var(--spacing-4);
-  color: var(--color-icon-primary);
-  will-change: filter;
-  transition: filter var(--duration-medium) var(--ease-standard);
-}
-
-.logo:hover {
-  filter: drop-shadow(0 0 var(--spacing-6) var(--color-accent));
-}
