@@ -36,6 +36,11 @@ No call when the reply only acknowledges or reports, with no tool call:
 what you have already said. An order to stop gets no call either: run
 nothing.
 
+The Knowqore workflow's own bookkeeping is not a task and needs no call:
+`assess`, `respond`, `record`, `amend`, and the notes `knowqore-signal.md`
+asks for in `dogfood/`. A reply whose only tool calls are these makes no
+`consider` call.
+
 An approach that looks obvious still gets the call: the human's experience
 may hold an asset or a preference you would not think of.
 

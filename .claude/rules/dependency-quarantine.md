@@ -10,9 +10,12 @@ This is a quiet quarantine against freshly published malicious releases.
 - Check the registry API or package page for that version. Do not trust
   memory, download mirrors, or lockfile dates. The `scout` agent can do
   the lookup.
-- If the wanted version is too new, take the newest version that is at
-  least 2 days old, or wait. Do not add the package if no qualifying
-  version exists.
+- Take the newest version that has passed the quarantine and works with
+  the rest of the build (owner, 22 October 2026). If the newest is too new,
+  take the newest one at least 2 days old, or wait. Do not add the package
+  if no qualifying version exists.
+- A version held back for compatibility gets a comment at its pin saying
+  what holds it, so the next check does not try it again.
 - Applies to new packages and to version bumps of existing ones, git-tag
   pins of forks included, and to what a lockfile refresh (`bun install`,
   `bun update`, `cargo update`) pulls in. Does not apply to this repo's own
