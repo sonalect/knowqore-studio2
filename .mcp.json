@@ -3,7 +3,10 @@
     "Knowqore-AI": {
       "type": "stdio",
       "command": "knq",
-      "args": []
+      "args": [],
+      "env": {
+        "GLIBC_TUNABLES": "glibc.malloc.arena_max=2"
+      }
     }
   }
 }
