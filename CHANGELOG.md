@@ -9,6 +9,13 @@ While the major version is 0, a breaking change bumps the minor version.
 
 ### Added
 
+- Choosing a source in the tree groups the Lessons table by the next level
+  below it (hosts under a kind, owners under a host, repositories under an
+  owner). Each group has a header with its label and the number of Lessons
+  that pass the filters, and folds shut with its chevron or a click; the folds
+  are kept while the source stays chosen. A Lesson seen in two groups is
+  listed in both; the result count above the table counts each Lesson once.
+  Choosing another source closes the details card.
 - The details card reads the selected Lesson from the store and has three
   tabs. Overview shows its statement in full, highlighted as Markdown, with
   the fields of the table: kind, status, polarity, transfer, updated, and id.

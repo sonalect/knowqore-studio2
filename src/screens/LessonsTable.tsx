@@ -1,4 +1,5 @@
 import { Badge } from "@astryxdesign/core/Badge";
+import { Icon } from "@astryxdesign/core/Icon";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { StatusDot } from "@astryxdesign/core/StatusDot";
 import {
@@ -12,8 +13,9 @@ import {
 } from "@astryxdesign/core/Table";
 import { Text } from "@astryxdesign/core/Text";
 import { Tooltip } from "@astryxdesign/core/Tooltip";
-import { colorVars } from "@astryxdesign/core/theme/tokens.stylex";
+import { colorVars, spacingVars } from "@astryxdesign/core/theme/tokens.stylex";
 import * as stylex from "@stylexjs/stylex";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import {
   type Ref,
   useCallback,
@@ -25,10 +27,12 @@ import {
 import {
   formatUpdated,
   formatUpdatedFull,
+  type GroupHeader,
   type LessonFilters,
   type LessonRow,
   type LessonSortKey,
   lessonsPage,
+  type PageItem,
   type SortDirection,
 } from "../lessons";
 import { kindLook, polarityLook, statusLook } from "../lessonValues";
@@ -49,8 +53,16 @@ interface Sort {
 
 const DEFAULT_SORT: Sort = { sortKey: "updatedAt", direction: "descending" };
 
-/** A row of the table: a Lesson, a blank placeholder, or a spacer. */
-type Item = LessonRow & { marker?: "placeholder" | "spacer" };
+/**
+ * A row of the table: a Lesson, a group header, a blank placeholder, or a
+ * spacer. `rowKey` is the row's position, since a Lesson seen in two groups
+ * appears twice with one id.
+ */
+type Item = LessonRow & {
+  rowKey: string;
+  marker?: "placeholder" | "spacer";
+  group?: GroupHeader;
+};
 
 /** A value with an optional colored dot before it; plain text for an unknown value. */
 function DotValue({
@@ -171,6 +183,30 @@ const styles = stylex.create({
   row: {
     cursor: "default",
   },
+  // The arrow, as everywhere in Studio: Studio's own StyleX is unlayered, so a
+  // `pointer` here would win over the page rule that keeps it (src/index.css).
+  groupRow: {
+    cursor: "default",
+    // Set apart from the Lesson rows in both themes: lighter than the card
+    // in the dark one, a shade darker in the light one. (Muted is the card's
+    // own color in the dark theme.)
+    backgroundColor: "var(--color-background-gray)",
+  },
+  // The plugin's own chevron pattern: a bare button, since IconButton passes
+  // no aria-expanded through.
+  chevron: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: spacingVars["--spacing-1"],
+    border: "none",
+    background: "none",
+    color: colorVars["--color-text-secondary"],
+    cursor: "default",
+  },
+  groupCell: {
+    paddingBlock: 0,
+    paddingInline: spacingVars["--spacing-2"],
+  },
   selectedRow: {
     boxShadow: `inset 0 0 0 100vmax ${colorVars["--color-accent-muted"]}`,
   },
@@ -185,9 +221,10 @@ function isSortKey(key: string): key is LessonSortKey {
   return COLUMNS.some((column) => column.key === key && column.sortable);
 }
 
-function blank(id: string, marker: "placeholder" | "spacer"): Item {
+function blank(id: string, marker?: "placeholder" | "spacer"): Item {
   return {
     id,
+    rowKey: id,
     statement: "",
     kind: "",
     status: "",
@@ -273,18 +310,23 @@ export function LessonsTable({
   node,
   filters,
   selectedId,
+  collapsed,
+  onToggleGroup,
   onSelect,
   onTotal,
 }: {
   node: string | null;
   filters: LessonFilters;
+  /** The keys of the groups folded shut. */
+  collapsed: string[];
+  onToggleGroup: (key: string) => void;
   selectedId: string | null;
   onSelect: (row: LessonRow) => void;
   onTotal: (total: number) => void;
 }) {
   const [sort, setSort] = useState<Sort>(DEFAULT_SORT);
   const [total, setTotal] = useState<number | null>(null);
-  const [blocks, setBlocks] = useState<ReadonlyMap<number, LessonRow[]>>(
+  const [blocks, setBlocks] = useState<ReadonlyMap<number, PageItem[]>>(
     () => new Map(),
   );
   const [error, setError] = useState<string | null>(null);
@@ -299,7 +341,7 @@ export function LessonsTable({
   // `generation:block` of every call in flight.
   const inFlight = useRef(new Set<string>());
   // The blocks held, readable without being an effect dependency.
-  const loaded = useRef<ReadonlyMap<number, LessonRow[]>>(blocks);
+  const loaded = useRef<ReadonlyMap<number, PageItem[]>>(blocks);
   // The blocks the view needs now, for answers that arrive late.
   const needed = useRef({ lo: 0, hi: 0 });
   const scrollEl = useRef<HTMLDivElement | null>(null);
@@ -328,21 +370,36 @@ export function LessonsTable({
     [filtersKey],
   );
 
-  // A node or filter change starts the list over, as a sort change does; the
-  // sort stays.
-  const shown = useRef({ node, filtersKey });
+  // The folded groups by value, likewise.
+  const collapsedKey = JSON.stringify(collapsed);
+  const stableCollapsed = useMemo<string[]>(
+    () => JSON.parse(collapsedKey) as string[],
+    [collapsedKey],
+  );
+
+  // A node, filter, or folded-group change starts the list over, as a sort
+  // change does; the sort stays. Only a folded group keeps the scroll
+  // position: the person is looking at the group they just toggled.
+  const shown = useRef({ node, filtersKey, collapsedKey });
   useEffect(() => {
-    if (shown.current.node === node && shown.current.filtersKey === filtersKey)
+    const was = shown.current;
+    if (
+      was.node === node &&
+      was.filtersKey === filtersKey &&
+      was.collapsedKey === collapsedKey
+    )
       return;
-    shown.current = { node, filtersKey };
+    shown.current = { node, filtersKey, collapsedKey };
     generation.current += 1;
     inFlight.current.clear();
     loaded.current = new Map();
     setBlocks(loaded.current);
     setError(null);
-    scrollEl.current?.scrollTo({ top: 0 });
-    setScrollTop(0);
-  }, [node, filtersKey]);
+    if (was.node !== node || was.filtersKey !== filtersKey) {
+      scrollEl.current?.scrollTo({ top: 0 });
+      setScrollTop(0);
+    }
+  }, [node, filtersKey, collapsedKey]);
 
   useEffect(() => {
     const pruned = new Map(
@@ -364,17 +421,19 @@ export function LessonsTable({
         limit: BLOCK,
         node,
         filters: stableFilters,
+        collapsed: stableCollapsed,
       })
         .then((page) => {
           inFlight.current.delete(key);
           if (gen !== generation.current) return;
           setError(null);
           setTotal(page.total);
-          onTotal(page.total);
+          // The readout counts Lessons, not the rows and headers scrolled.
+          onTotal(page.lessons);
           const { lo: nlo, hi: nhi } = needed.current;
           if (block < nlo || block > nhi) return;
           const next = new Map(loaded.current);
-          next.set(block, page.rows);
+          next.set(block, page.items);
           loaded.current = next;
           setBlocks(next);
         })
@@ -384,7 +443,16 @@ export function LessonsTable({
           setError(String(reason));
         });
     }
-  }, [lo, hi, sortKey, direction, node, stableFilters, onTotal]);
+  }, [
+    lo,
+    hi,
+    sortKey,
+    direction,
+    node,
+    stableFilters,
+    stableCollapsed,
+    onTotal,
+  ]);
 
   const attachScroll = useCallback((el: HTMLDivElement | null) => {
     observer.current?.disconnect();
@@ -459,8 +527,18 @@ export function LessonsTable({
       out.push(blank("spacer-top", "spacer"));
     }
     for (let index = rFirst; index <= rLast; index += 1) {
-      const row = blocks.get(Math.floor(index / BLOCK))?.[index % BLOCK];
-      out.push(row ?? blank(`placeholder-${index}`, "placeholder"));
+      const entry = blocks.get(Math.floor(index / BLOCK))?.[index % BLOCK];
+      if (!entry) {
+        out.push(blank(`placeholder-${index}`, "placeholder"));
+      } else if (entry.type === "group") {
+        out.push({
+          ...blank(`group:${entry.key}`),
+          rowKey: `row-${index}`,
+          group: entry,
+        });
+      } else {
+        out.push({ ...entry, rowKey: `row-${index}` });
+      }
     }
     if (rLast < count - 1) {
       out.push(blank("spacer-bottom", "spacer"));
@@ -499,7 +577,9 @@ export function LessonsTable({
         xstyle: [...props.xstyle, styles.header],
       }),
       transformBodyCell: (props, _column, item) =>
-        item.marker ? { ...props, isContentSuppressed: true } : props,
+        item.marker || item.group
+          ? { ...props, isContentSuppressed: true }
+          : props,
       transformBodyRow: (props, item) => {
         if (item.marker === "spacer") {
           const height =
@@ -519,6 +599,49 @@ export function LessonsTable({
             htmlProps: { ...props.htmlProps, "aria-hidden": true },
           };
         }
+        const group = item.group;
+        if (group) {
+          const label = `${group.collapsed ? "Expand" : "Collapse"} ${group.label}`;
+          return {
+            ...props,
+            xstyle: [
+              ...props.xstyle,
+              styles.groupRow,
+              styles.height(rowHeight),
+            ],
+            htmlProps: {
+              ...props.htmlProps,
+              onClick: () => onToggleGroup(group.key),
+            },
+            // One full-width cell, as the grouped-rows plugin draws its
+            // headers; a colSpan past the column count is clamped.
+            children: (
+              <td colSpan={999} {...stylex.props(styles.groupCell)}>
+                <HStack gap={2} vAlign="center">
+                  <button
+                    type="button"
+                    aria-label={label}
+                    aria-expanded={!group.collapsed}
+                    {...stylex.props(styles.chevron)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onToggleGroup(group.key);
+                    }}
+                  >
+                    <Icon
+                      icon={group.collapsed ? ChevronRight : ChevronDown}
+                      size="sm"
+                    />
+                  </button>
+                  <Text weight="semibold" maxLines={1}>
+                    {group.label}
+                  </Text>
+                  <Text color="secondary">({group.lessons})</Text>
+                </HStack>
+              </td>
+            ),
+          };
+        }
         const isSelected = item.id === selectedId;
         return {
           ...props,
@@ -536,7 +659,15 @@ export function LessonsTable({
         };
       },
     }),
-    [attachScroll, measureRow, onSelect, rowHeight, selectedId, spacerHeights],
+    [
+      attachScroll,
+      measureRow,
+      onSelect,
+      onToggleGroup,
+      rowHeight,
+      selectedId,
+      spacerHeights,
+    ],
   );
 
   if (error !== null) {
@@ -561,7 +692,7 @@ export function LessonsTable({
     <Table
       data={items}
       columns={COLUMNS}
-      idKey="id"
+      idKey="rowKey"
       density="compact"
       hasHover
       textOverflow="truncate"

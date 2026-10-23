@@ -121,6 +121,11 @@ pub struct LessonsQuery {
     /// Which values the Lessons must have; empty narrows nothing.
     #[serde(default)]
     pub filters: LessonFilters,
+    /// The keys of the groups folded shut ([`PageItem::Group::key`]). Groups
+    /// exist only when `node` names a node that has children; the keys of a
+    /// folded group's Lessons are left out of the page, its header stays.
+    #[serde(default)]
+    pub collapsed: Vec<String>,
 }
 
 /// The values a Lesson may have, per field. The values of one field are
@@ -203,16 +208,45 @@ fn facet_counts<'a>(values: impl Iterator<Item = &'a str>) -> Vec<FacetCount> {
         .collect()
 }
 
-/// One window of sorted rows.
+/// One item of the table: a Lesson's row, or the header of a group of them.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum PageItem {
+    /// The header that opens a group: the Lessons under one child of the
+    /// chosen node.
+    Group {
+        /// The child node's key; the chosen node's own key for the group of
+        /// Lessons seen in no child.
+        key: String,
+        /// The child's label, or the chosen node's own label.
+        label: String,
+        /// How many Lessons the group holds after the filters, folded or not.
+        lessons: usize,
+        /// Whether the group is folded shut: its Lessons are not listed.
+        collapsed: bool,
+    },
+    /// A Lesson of the group above it, or of the whole list without groups.
+    Lesson(LessonRow),
+}
+
+/// One window of sorted items.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LessonsPage {
-    /// How many Lessons there are in all, or under the node asked for.
+    /// How many items there are in all: Lessons, and group headers when the
+    /// node is grouped, without the Lessons of folded groups.
     pub total: usize,
-    /// The position of the first row among all of them; at most `total`.
+    /// How many distinct Lessons the node and the filters admit, however
+    /// they are grouped or folded: the count the person reads.
+    pub lessons: usize,
+    /// The position of the first item among all of them; at most `total`.
     pub offset: usize,
-    /// The rows of the window: fewer than asked for at the end.
-    pub rows: Vec<LessonRow>,
+    /// The items of the window: fewer than asked for at the end.
+    pub items: Vec<PageItem>,
 }
 
 /// One node of the tree of containers: a kind of source, or a prefix of the
@@ -385,13 +419,9 @@ fn under_node(entry: &Entry, kind: &str, prefix: &[&str]) -> bool {
 /// The positions in `entries` of the Lessons under the node `key`; none for
 /// a key that is not `kind:prefix`.
 fn positions_under(entries: &[Entry], key: &str) -> Vec<usize> {
-    let Some((kind, prefix)) = key.split_once(':') else {
+    let Some((kind, prefix)) = node_parts(key) else {
         return Vec::new();
     };
-    let prefix: Vec<&str> = prefix
-        .split('/')
-        .filter(|segment| !segment.is_empty())
-        .collect();
     entries
         .iter()
         .enumerate()
@@ -400,17 +430,55 @@ fn positions_under(entries: &[Entry], key: &str) -> Vec<usize> {
         .collect()
 }
 
-/// What the cached matching positions were found for: the node and the filters.
-type MatchKey = (Option<String>, LessonFilters);
+/// What the cached sequence was found for: the node, the filters, and the
+/// folded groups (sorted, without repeats).
+type MatchKey = (Option<String>, LessonFilters, Vec<String>);
+
+/// One place of the flattened sequence a page cuts its window from.
+enum Slot {
+    /// The header of a group.
+    Header {
+        key: String,
+        label: String,
+        lessons: usize,
+        collapsed: bool,
+    },
+    /// The Lesson at this position in `entries`.
+    Lesson(usize),
+}
+
+/// The parts of a node key `kind:prefix`: the kind and the prefix split at
+/// `/`; none for a key that is not of this form.
+fn node_parts(key: &str) -> Option<(&str, Vec<&str>)> {
+    let (kind, prefix) = key.split_once(':')?;
+    Some((
+        kind,
+        prefix
+            .split('/')
+            .filter(|segment| !segment.is_empty())
+            .collect(),
+    ))
+}
+
+/// The node of the tree with `key`.
+fn find_node<'a>(nodes: &'a [LessonTreeNode], key: &str) -> Option<&'a LessonTreeNode> {
+    nodes.iter().find_map(|node| {
+        if node.key == key {
+            Some(node)
+        } else {
+            find_node(&node.children, key)
+        }
+    })
+}
 
 /// The Lessons of one store, in the last order asked for.
 struct Lessons {
     entries: Vec<Entry>,
     order: Option<(LessonSortKey, SortDirection)>,
-    /// The positions in `entries` of the Lessons that passed the last node
-    /// and filters asked for, under that key; dropped when the order changes.
-    /// Not kept when neither narrows.
-    matching: Option<(MatchKey, Vec<usize>)>,
+    /// The flattened sequence for the last node, filters, and folded groups
+    /// asked for, under that key; dropped when the order changes. Not kept
+    /// when none of them narrows.
+    matching: Option<(MatchKey, Vec<Slot>, usize)>,
     tree: LessonTree,
 }
 
@@ -457,9 +525,10 @@ impl Lessons {
     }
 
     /// The window `query` asks for; sorts the rows first when it asks for
-    /// another order than the last one, and finds the Lessons that pass its
-    /// node and filters when it asks for another node or other filters than
-    /// the last time.
+    /// another order than the last one, and flattens the Lessons that pass
+    /// its node and filters (with the headers of their groups) when it asks
+    /// for another node, other filters, or other folded groups than the last
+    /// time.
     fn page(&mut self, query: &LessonsQuery) -> LessonsPage {
         let order = (query.sort_key, query.direction);
         if self.order != Some(order) {
@@ -472,40 +541,125 @@ impl Lessons {
             let (start, end) = window(self.entries.len(), query);
             return LessonsPage {
                 total: self.entries.len(),
+                lessons: self.entries.len(),
                 offset: start,
-                rows: self
+                items: self
                     .entries
                     .get(start..end)
                     .unwrap_or_default()
                     .iter()
-                    .map(|entry| entry.row.clone())
+                    .map(|entry| PageItem::Lesson(entry.row.clone()))
                     .collect(),
             };
         }
-        let stale = self
+        let mut collapsed = query.collapsed.clone();
+        collapsed.sort_unstable();
+        collapsed.dedup();
+        let key: MatchKey = (query.node.clone(), query.filters.clone(), collapsed);
+        if self
             .matching
             .as_ref()
-            .is_none_or(|((node, filters), _)| *node != query.node || *filters != query.filters);
-        if stale {
-            let positions = self.positions(query.node.as_deref(), &query.filters);
-            self.matching = Some(((query.node.clone(), query.filters.clone()), positions));
+            .is_none_or(|(kept, _, _)| *kept != key)
+        {
+            let (slots, lessons) = self.slots(query.node.as_deref(), &query.filters, &key.2);
+            self.matching = Some((key, slots, lessons));
         }
-        let positions = self
+        let (slots, lessons) = self
             .matching
             .as_ref()
-            .map_or(&[][..], |(_, p)| p.as_slice());
-        let (start, end) = window(positions.len(), query);
+            .map_or((&[][..], 0), |(_, s, n)| (s.as_slice(), *n));
+        let (start, end) = window(slots.len(), query);
         LessonsPage {
-            total: positions.len(),
+            total: slots.len(),
+            lessons,
             offset: start,
-            rows: positions
+            items: slots
                 .get(start..end)
                 .unwrap_or_default()
                 .iter()
-                .filter_map(|&index| self.entries.get(index))
-                .map(|entry| entry.row.clone())
+                .filter_map(|slot| match slot {
+                    Slot::Header {
+                        key,
+                        label,
+                        lessons,
+                        collapsed,
+                    } => Some(PageItem::Group {
+                        key: key.clone(),
+                        label: label.clone(),
+                        lessons: *lessons,
+                        collapsed: *collapsed,
+                    }),
+                    Slot::Lesson(index) => self
+                        .entries
+                        .get(*index)
+                        .map(|entry| PageItem::Lesson(entry.row.clone())),
+                })
                 .collect(),
         }
+    }
+
+    /// The sequence of the Lessons under `node` (all when `None`) that
+    /// `filters` admit. When the node has children it is grouped by them, in
+    /// the tree's order, each group after its header and without its Lessons
+    /// when its key is in `collapsed`; the Lessons seen in no child form a
+    /// last group named for the node itself. Groups left empty by the filters
+    /// are dropped. Without children the sequence is the Lessons alone. With
+    /// the sequence comes how many distinct Lessons it holds.
+    fn slots(
+        &self,
+        node: Option<&str>,
+        filters: &LessonFilters,
+        collapsed: &[String],
+    ) -> (Vec<Slot>, usize) {
+        let positions = self.positions(node, filters);
+        let lessons = positions.len();
+        let Some(parent) = node
+            .and_then(|key| find_node(&self.tree.nodes, key))
+            .filter(|parent| !parent.children.is_empty())
+        else {
+            return (positions.into_iter().map(Slot::Lesson).collect(), lessons);
+        };
+        let mut groups: Vec<(&LessonTreeNode, Vec<usize>)> = Vec::new();
+        let mut placed = HashSet::new();
+        for child in &parent.children {
+            let Some((kind, prefix)) = node_parts(&child.key) else {
+                continue;
+            };
+            let members: Vec<usize> = positions
+                .iter()
+                .copied()
+                .filter(|&index| {
+                    self.entries
+                        .get(index)
+                        .is_some_and(|entry| under_node(entry, kind, &prefix))
+                })
+                .collect();
+            placed.extend(members.iter().copied());
+            groups.push((child, members));
+        }
+        let own: Vec<usize> = positions
+            .iter()
+            .copied()
+            .filter(|index| !placed.contains(index))
+            .collect();
+        groups.push((parent, own));
+        let mut slots = Vec::new();
+        for (group, members) in groups {
+            if members.is_empty() {
+                continue;
+            }
+            let folded = collapsed.contains(&group.key);
+            slots.push(Slot::Header {
+                key: group.key.clone(),
+                label: group.label.clone(),
+                lessons: members.len(),
+                collapsed: folded,
+            });
+            if !folded {
+                slots.extend(members.into_iter().map(Slot::Lesson));
+            }
+        }
+        (slots, lessons)
     }
 
     /// The positions of the Lessons under `node` (all when `None`) that
@@ -729,7 +883,7 @@ mod tests {
 
     use super::{
         FacetCount, FoundLesson, LessonFilters, LessonRow, LessonSortKey, Lessons, LessonsQuery,
-        MAX_PAGE_ROWS, STATEMENT_CHARS, SortDirection, containers_of,
+        MAX_PAGE_ROWS, PageItem, STATEMENT_CHARS, SortDirection, containers_of,
     };
 
     /// Rows seen in no container.
@@ -782,15 +936,14 @@ mod tests {
             limit: 10,
             node: None,
             filters: LessonFilters::default(),
+            collapsed: Vec::new(),
         }
     }
 
     fn ids(lessons: &mut Lessons, query: &LessonsQuery) -> Vec<String> {
-        lessons
-            .page(query)
-            .rows
+        ids_of(&lessons.page(query))
             .into_iter()
-            .map(|row| row.id)
+            .map(str::to_owned)
             .collect()
     }
 
@@ -836,8 +989,7 @@ mod tests {
         let page = lessons.page(&window);
         assert_eq!(page.total, 4);
         assert_eq!(page.offset, 1);
-        let ids: Vec<_> = page.rows.iter().map(|row| row.id.as_str()).collect();
-        assert_eq!(ids, ["l3", "l1"]);
+        assert_eq!(ids_of(&page), ["l3", "l1"]);
     }
 
     #[test]
@@ -848,7 +1000,7 @@ mod tests {
             ..query(LessonSortKey::Kind, SortDirection::Ascending)
         };
         let page = lessons.page(&window);
-        assert_eq!((page.total, page.offset, page.rows.len()), (4, 4, 0));
+        assert_eq!((page.total, page.offset, page.items.len()), (4, 4, 0));
     }
 
     #[test]
@@ -861,7 +1013,7 @@ mod tests {
             limit: usize::MAX,
             ..query(LessonSortKey::Kind, SortDirection::Ascending)
         };
-        assert_eq!(lessons.page(&window).rows.len(), MAX_PAGE_ROWS);
+        assert_eq!(lessons.page(&window).items.len(), MAX_PAGE_ROWS);
     }
 
     #[test]
@@ -995,20 +1147,23 @@ mod tests {
     #[test]
     fn a_node_narrows_the_page_and_its_total() {
         let mut lessons = tree_fixture();
+        // Two repositories below the owner: two headers and three rows (l2
+        // is in both).
         let owner = lessons.page(&under("git:github.com/sonalect"));
-        assert_eq!(owner.total, 2);
-        assert_eq!(ids_of(&owner), ["l1", "l2"]);
+        assert_eq!(owner.total, 5);
+        assert_eq!(ids_of(&owner), ["l1", "l2", "l2"]);
+        // A repository has no children: no groups.
         let repository = lessons.page(&under("git:github.com/sonalect/scheda"));
         assert_eq!((repository.total, ids_of(&repository)), (1, vec!["l2"]));
         let kind = lessons.page(&under("git:"));
-        assert_eq!(kind.total, 4);
+        assert_eq!(kind.total, 6);
         let window = LessonsQuery {
             offset: 1,
             limit: 1,
             ..under("git:")
         };
         let page = lessons.page(&window);
-        assert_eq!((page.total, page.offset, ids_of(&page)), (4, 1, vec!["l2"]));
+        assert_eq!((page.total, page.offset, ids_of(&page)), (6, 1, vec!["l1"]));
         let all = lessons.page(&query(LessonSortKey::Statement, SortDirection::Ascending));
         assert_eq!(all.total, 6);
     }
@@ -1022,9 +1177,9 @@ mod tests {
         };
         assert_eq!(
             ids_of(&lessons.page(&under("git:github.com/sonalect"))),
-            ["l1", "l2"]
+            ["l1", "l2", "l2"]
         );
-        assert_eq!(ids_of(&lessons.page(&descending)), ["l2", "l1"]);
+        assert_eq!(ids_of(&lessons.page(&descending)), ["l2", "l1", "l2"]);
     }
 
     #[test]
@@ -1033,7 +1188,7 @@ mod tests {
         for key in ["git:nowhere", "nokind", "svn:"] {
             let page = lessons.page(&under(key));
             assert_eq!(
-                (page.total, page.offset, page.rows.len()),
+                (page.total, page.offset, page.items.len()),
                 (0, 0, 0),
                 "{key}"
             );
@@ -1099,9 +1254,10 @@ mod tests {
             ..LessonFilters::default()
         };
         let page = lessons.page(&filtered(Some("git:a"), avoid));
-        assert_eq!((page.total, ids_of(&page)), (1, vec!["l2"]));
+        // One group below `git:a`: its header and the Lesson.
+        assert_eq!((page.total, ids_of(&page)), (2, vec!["l2"]));
         let plain = lessons.page(&filtered(Some("git:a"), LessonFilters::default()));
-        assert_eq!(plain.total, 2);
+        assert_eq!(plain.total, 3);
         let all = lessons.page(&filtered(None, LessonFilters::default()));
         assert_eq!(all.total, 4);
     }
@@ -1113,12 +1269,12 @@ mod tests {
             status: strings(&[status]),
             ..LessonFilters::default()
         };
-        assert_eq!(lessons.page(&filtered(Some("git:"), by("active"))).total, 3);
+        assert_eq!(lessons.page(&filtered(Some("git:"), by("active"))).total, 5);
         assert_eq!(
             lessons.page(&filtered(Some("git:"), by("retired"))).total,
-            1
+            2
         );
-        assert_eq!(lessons.page(&filtered(Some("git:"), by("active"))).total, 3);
+        assert_eq!(lessons.page(&filtered(Some("git:"), by("active"))).total, 5);
         assert_eq!(lessons.page(&filtered(None, by("retired"))).total, 1);
         assert_eq!(lessons.page(&filtered(None, by("candidate"))).total, 0);
     }
@@ -1149,7 +1305,222 @@ mod tests {
         );
     }
 
+    /// The ids of the Lessons of a page, headers left out.
     fn ids_of(page: &super::LessonsPage) -> Vec<&str> {
-        page.rows.iter().map(|row| row.id.as_str()).collect()
+        page.items
+            .iter()
+            .filter_map(|item| match item {
+                PageItem::Lesson(row) => Some(row.id.as_str()),
+                PageItem::Group { .. } => None,
+            })
+            .collect()
+    }
+
+    /// A page as text: `[key (n)]` for an open group, `[key (n)]-` for a
+    /// folded one, the id for a Lesson.
+    fn shape(page: &super::LessonsPage) -> Vec<String> {
+        page.items
+            .iter()
+            .map(|item| match item {
+                PageItem::Lesson(row) => row.id.clone(),
+                PageItem::Group {
+                    key,
+                    lessons,
+                    collapsed,
+                    ..
+                } => format!("[{key} ({lessons})]{}", if *collapsed { "-" } else { "" }),
+            })
+            .collect()
+    }
+
+    fn grouped(node: &str, collapsed: &[&str]) -> LessonsQuery {
+        LessonsQuery {
+            collapsed: strings(collapsed),
+            ..under(node)
+        }
+    }
+
+    /// l1 knowqore; l2 knowqore and scheda; l3 mimalloc; l4 gitlab; one
+    /// Lesson (l7) at the owner `sonalect` itself, none in a repository.
+    fn grouping_fixture() -> Lessons {
+        let kinds = git(&[
+            "github.com/sonalect/knowqore",
+            "github.com/sonalect/scheda",
+            "github.com/amsokol/mimalloc",
+            "gitlab.com/team/app",
+            "github.com/sonalect",
+        ]);
+        Lessons::new(
+            vec![
+                seen("l1", &["github.com/sonalect/knowqore"]),
+                seen(
+                    "l2",
+                    &["github.com/sonalect/knowqore", "github.com/sonalect/scheda"],
+                ),
+                seen("l3", &["github.com/amsokol/mimalloc"]),
+                seen("l4", &["gitlab.com/team/app"]),
+                seen("l7", &["github.com/sonalect"]),
+            ],
+            &kinds,
+        )
+    }
+
+    #[test]
+    fn a_kind_groups_by_its_hosts() {
+        let mut lessons = grouping_fixture();
+        let page = lessons.page(&grouped("git:", &[]));
+        assert_eq!(
+            shape(&page),
+            [
+                "[git:github.com (4)]",
+                "l1",
+                "l2",
+                "l3",
+                "l7",
+                "[git:gitlab.com (1)]",
+                "l4"
+            ]
+        );
+        assert_eq!(page.total, 7);
+    }
+
+    #[test]
+    fn a_host_groups_by_owners_and_an_owner_by_repositories() {
+        let mut lessons = grouping_fixture();
+        assert_eq!(
+            shape(&lessons.page(&grouped("git:github.com", &[]))),
+            [
+                "[git:github.com/sonalect (3)]",
+                "l1",
+                "l2",
+                "l7",
+                "[git:github.com/amsokol (1)]",
+                "l3"
+            ]
+        );
+        let page = lessons.page(&grouped("git:github.com/sonalect", &[]));
+        assert_eq!(
+            shape(&page),
+            [
+                "[git:github.com/sonalect/knowqore (2)]",
+                "l1",
+                "l2",
+                "[git:github.com/sonalect/scheda (1)]",
+                "l2",
+                "[git:github.com/sonalect (1)]",
+                "l7"
+            ]
+        );
+        assert!(
+            page.items.iter().any(|item| matches!(
+                item,
+                PageItem::Group { key, label, .. }
+                    if key == "git:github.com/sonalect" && label == "sonalect"
+            )),
+            "{page:?}"
+        );
+    }
+
+    #[test]
+    fn filters_change_the_counts_and_drop_empty_groups() {
+        let mut lessons = grouping_fixture();
+        // Only l2 is retired.
+        for entry in lessons.entries.iter_mut().filter(|e| e.row.id == "l2") {
+            entry.row.status = "retired".to_owned();
+        }
+        let query = LessonsQuery {
+            filters: LessonFilters {
+                status: strings(&["retired"]),
+                ..LessonFilters::default()
+            },
+            ..grouped("git:github.com/sonalect", &[])
+        };
+        assert_eq!(
+            shape(&lessons.page(&query)),
+            [
+                "[git:github.com/sonalect/knowqore (1)]",
+                "l2",
+                "[git:github.com/sonalect/scheda (1)]",
+                "l2"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_folded_group_keeps_only_its_header_and_the_total_follows() {
+        let mut lessons = grouping_fixture();
+        let page = lessons.page(&grouped("git:", &["git:github.com"]));
+        assert_eq!(
+            shape(&page),
+            ["[git:github.com (4)]-", "[git:gitlab.com (1)]", "l4"]
+        );
+        assert_eq!(page.total, 3);
+        let unfolded = lessons.page(&grouped("git:", &[]));
+        assert_eq!(unfolded.total, 7);
+    }
+
+    #[test]
+    fn the_lesson_count_counts_each_lesson_once_however_it_is_grouped() {
+        let mut lessons = grouping_fixture();
+        // Under `sonalect`, l2 sits in two repositories and l7 in the owner's
+        // own group: three Lessons, five rows and headers when open.
+        let open = lessons.page(&grouped("git:github.com/sonalect", &[]));
+        assert_eq!(open.lessons, 3);
+        assert!(open.total > open.lessons);
+        let folded = lessons.page(&grouped(
+            "git:github.com/sonalect",
+            &[
+                "git:github.com/sonalect/knowqore",
+                "git:github.com/sonalect/scheda",
+                "git:github.com/sonalect",
+            ],
+        ));
+        assert_eq!(folded.lessons, 3);
+        assert_eq!(folded.total, 3);
+    }
+
+    #[test]
+    fn a_window_may_start_inside_a_group() {
+        let mut lessons = grouping_fixture();
+        let window = LessonsQuery {
+            offset: 2,
+            limit: 3,
+            ..grouped("git:", &[])
+        };
+        let page = lessons.page(&window);
+        assert_eq!((page.total, page.offset), (7, 2));
+        assert_eq!(shape(&page), ["l2", "l3", "l7"]);
+    }
+
+    #[test]
+    fn a_leaf_and_no_node_show_no_groups() {
+        let mut lessons = grouping_fixture();
+        let leaf = lessons.page(&grouped("git:github.com/sonalect/scheda", &[]));
+        assert_eq!(shape(&leaf), ["l2"]);
+        let all = lessons.page(&query(LessonSortKey::Statement, SortDirection::Ascending));
+        assert!(
+            all.items
+                .iter()
+                .all(|item| matches!(item, PageItem::Lesson(_)))
+        );
+    }
+
+    #[test]
+    fn a_page_item_is_tagged_in_the_wire_form() {
+        let group = PageItem::Group {
+            key: "git:a".to_owned(),
+            label: "a".to_owned(),
+            lessons: 2,
+            collapsed: true,
+        };
+        let json = serde_json::to_string(&group).unwrap_or_default();
+        assert_eq!(
+            json,
+            r#"{"type":"group","key":"git:a","label":"a","lessons":2,"collapsed":true}"#
+        );
+        let lesson = PageItem::Lesson(row("l1", "s", "asset", "t"));
+        let json = serde_json::to_string(&lesson).unwrap_or_default();
+        assert!(json.starts_with(r#"{"type":"lesson","id":"l1""#), "{json}");
+        assert!(json.contains(r#""updatedAt":"t""#), "{json}");
     }
 }

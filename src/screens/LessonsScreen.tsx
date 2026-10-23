@@ -30,6 +30,7 @@ import {
 import {
   type ReactNode,
   type RefObject,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -144,7 +145,38 @@ function DetailsPanel({
 export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
   const [selected, setSelected] = useState<LessonRow | null>(null);
   const [total, setTotal] = useState<number | null>(null);
-  const [node, setNode] = useState<string | null>(null);
+  const [node, setNodeState] = useState<string | null>(null);
+  // Another source, or All Lessons, closes the details: the Lesson shown
+  // belongs to the list left behind.
+  const setNode = useCallback(
+    (next: string | null) => {
+      if (next !== node) setSelected(null);
+      setNodeState(next);
+    },
+    [node],
+  );
+  // The folded groups of the chosen node: kept while it stays chosen, and
+  // dropped when another is.
+  const [folded, setFolded] = useState<{ node: string | null; keys: string[] }>(
+    { node: null, keys: [] },
+  );
+  const collapsed = useMemo(
+    () => (folded.node === node ? folded.keys : []),
+    [folded, node],
+  );
+  const toggleGroup = useCallback(
+    (key: string) =>
+      setFolded((was) => {
+        const keys = was.node === node ? was.keys : [];
+        return {
+          node,
+          keys: keys.includes(key)
+            ? keys.filter((k) => k !== key)
+            : [...keys, key],
+        };
+      }),
+    [node],
+  );
   const [isNavCollapsed, setIsNavCollapsed] = useState(false);
   // The table and the details panel: the basis of the panel's percentages.
   const tableAndDetails = useRef<HTMLDivElement>(null);
@@ -161,7 +193,7 @@ export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
       typeof tree === "object" && tree !== null
         ? treeItems(tree.nodes, node, setNode)
         : [],
-    [tree, node],
+    [tree, node, setNode],
   );
   const path = useMemo(
     () =>
@@ -291,6 +323,8 @@ export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
                   <LessonsTable
                     node={node}
                     filters={filters}
+                    collapsed={collapsed}
+                    onToggleGroup={toggleGroup}
                     selectedId={selected?.id ?? null}
                     onSelect={setSelected}
                     onTotal={setTotal}

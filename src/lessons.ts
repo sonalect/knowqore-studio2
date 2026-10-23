@@ -42,6 +42,11 @@ export interface LessonsQuery {
   node: string | null;
   /** Values of one field are joined by "or", the fields by "and". */
   filters: LessonFilters;
+  /**
+   * The keys of the groups folded shut. Groups exist only when `node` has
+   * children in the tree; a folded group lists its header and no Lessons.
+   */
+  collapsed: string[];
 }
 
 /**
@@ -58,11 +63,35 @@ export interface LessonRow extends Record<string, unknown> {
   updatedAt: string;
 }
 
-/** `rows` starts at `offset`; `total` counts every Lesson of the Vault. */
+/** The header of a group of Lessons: those seen under one child of the chosen node. */
+export interface GroupHeader {
+  type: "group";
+  /** The child node's key; the chosen node's own key for the Lessons seen in no child. */
+  key: string;
+  label: string;
+  /** How many Lessons the group holds after the filters, folded or not. */
+  lessons: number;
+  collapsed: boolean;
+}
+
+/** A Lesson of the group above it, or of the whole list when it is not grouped. */
+export type LessonItem = LessonRow & { type: "lesson" };
+
+/** One item of the table. */
+export type PageItem = GroupHeader | LessonItem;
+
+/**
+ * `items` start at `offset`; `total` counts every item of the list: the
+ * Lessons, and the group headers when grouped, less the Lessons of folded
+ * groups.
+ */
 export interface LessonsPage {
+  /** Rows and group headers in all: what the table scrolls through. */
   total: number;
+  /** Distinct Lessons the node and the filters admit: what the person reads. */
+  lessons: number;
   offset: number;
-  rows: LessonRow[];
+  items: PageItem[];
 }
 
 /**

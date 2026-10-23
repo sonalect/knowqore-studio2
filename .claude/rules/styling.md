@@ -20,6 +20,14 @@ its stylesheets, never compile its sources.
 This overrides the line "No StyleX/Tailwind compiler here" in the generated
 `astryx.md`, which `astryx init` and `astryx upgrade` write back.
 
+## The arrow cursor
+
+Studio keeps the arrow over everything that can be clicked, as a desktop app
+does (owner, 23 October 2026); `src/index.css` overrides Astryx's pointing
+hand. Our own StyleX output, swizzled components included, sits outside
+Astryx's CSS layers and wins over that page rule, so never write
+`cursor: "pointer"` in it. Use `cursor: "default"`, or leave the cursor alone.
+
 ```tsx
 // BAD — a new class in index.css for one component
 <header className="status-bar">

@@ -18,7 +18,9 @@ only that module (owner, 23 October 2026).
    window, narrowed also by kind, status, transfer, and polarity (several
    values of one field are "or", fields are "and"), with the count of
    Lessons per value of each of the four fields under the same container
-   (`lesson_facets`). Today Studio places a Lesson by `Support.origins`, which names at
+   (`lesson_facets`), and grouped by the next level of container ids below the
+   prefix (the groups with their counts and the window across them, folded
+   groups listing only their header). Today Studio places a Lesson by `Support.origins`, which names at
    most five containers, so a Lesson known in more is found under its first
    five only. `LessonContainersOf` has them all, but one call per Lesson.
 3. **The containers with their counts**: each container with its kind and
