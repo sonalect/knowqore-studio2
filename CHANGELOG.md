@@ -7,6 +7,8 @@ While the major version is 0, a breaking change bumps the minor version.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-23
+
 ### Added
 
 - A Refresh button and a select for how often to read the data again (every
@@ -109,3 +111,8 @@ While the major version is 0, a breaking change bumps the minor version.
   `tokio` follows Knowqore's pin to 1.54.0.
 - The StyleX compiler for Studio's own styles, so screens can start from
   Astryx templates that use StyleX; the title bar is styled with it.
+
+## Links
+
+[Unreleased]: https://github.com/sonalect/knowqore-studio2/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/sonalect/knowqore-studio2/releases/tag/v0.1.0
