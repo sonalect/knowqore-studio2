@@ -23,8 +23,9 @@ While the major version is 0, a breaking change bumps the minor version.
   revision with the old and new statement, status, curator, containers,
   evidence, your choice, amended by an agent, and more) and the tab label
   counts them. Writes that changed nothing are hidden until a switch shows
-  them. A click on a write's id opens a dialog with the YAML diff of the
-  Lesson between that write and the version before it.
+  them. A click on a write's id opens a dialog, headed by the write's note,
+  with the YAML diff of the Lesson between that write and the version
+  before it.
 - A divider between the table and the details card drags the card wider or
   narrower. The card starts at 40% of the two, and its width is kept for the
   next start, as is the width of the side navigation.
@@ -36,6 +37,10 @@ While the major version is 0, a breaking change bumps the minor version.
 - Dates follow the system's regional format and local time zone, as in
   native apps, not the interface language.
 - A retired Lesson's statement is struck through in the table.
+- The columns of the Lessons table are resized by dragging their borders,
+  and their widths are kept for the next start; a table wider than its card
+  scrolls sideways. Until the person sets it, the Lesson column takes the
+  room the other columns leave.
 - The Lessons table shows the status as a badge and the kind with a colored
   dot, has a Polarity column, and puts the Lesson id under its statement.
 - The application skeleton on Tauri 2, React, and TypeScript (Vite, bun):

@@ -7,6 +7,7 @@ import {
   Table,
   type TableColumn,
   type TablePlugin,
+  useTableColumnResize,
   useTableSortable,
 } from "@astryxdesign/core/Table";
 import { Text } from "@astryxdesign/core/Text";
@@ -70,11 +71,25 @@ function DotValue({
   );
 }
 
+// Widths of the columns after the Lesson's, and the floors of the Lesson
+// and Updated columns, in pixels.
+const KIND_WIDTH = 130;
+const STATUS_WIDTH = 110;
+const POLARITY_WIDTH = 100;
+const TRANSFER_WIDTH = 100;
+const UPDATED_MIN_WIDTH = 150;
+const LESSON_MIN_WIDTH = 320;
+
+// Every column but the last has a pixel width, so dragging its border
+// resizes that column itself and the table grows sideways; Astryx resizes a
+// proportional column's neighbour instead. The last, Updated, is proportional
+// and takes the room left over. The Lesson column's width until the person
+// sets one is the room the others leave (see `fittedWidths`).
 const COLUMNS: TableColumn<Item>[] = [
   {
     key: "statement",
     header: "Lesson",
-    width: proportional(4),
+    width: pixel(LESSON_MIN_WIDTH),
     sortable: true,
     renderCell: (item) => (
       <VStack gap={0.5}>
@@ -95,7 +110,7 @@ const COLUMNS: TableColumn<Item>[] = [
   {
     key: "kind",
     header: "Kind",
-    width: proportional(1, { minWidth: 130 }),
+    width: pixel(KIND_WIDTH),
     sortable: true,
     renderCell: (item) => (
       <DotValue value={item.kind} look={kindLook(item.kind)} />
@@ -104,7 +119,7 @@ const COLUMNS: TableColumn<Item>[] = [
   {
     key: "status",
     header: "Status",
-    width: pixel(110),
+    width: pixel(STATUS_WIDTH),
     sortable: true,
     renderCell: (item) => {
       const look = statusLook(item.status);
@@ -118,7 +133,7 @@ const COLUMNS: TableColumn<Item>[] = [
   {
     key: "polarity",
     header: "Polarity",
-    width: pixel(100),
+    width: pixel(POLARITY_WIDTH),
     renderCell: (item) => (
       <DotValue value={item.polarity} look={polarityLook(item.polarity)} />
     ),
@@ -126,13 +141,13 @@ const COLUMNS: TableColumn<Item>[] = [
   {
     key: "transfer",
     header: "Transfer",
-    width: proportional(1),
+    width: pixel(TRANSFER_WIDTH),
     sortable: true,
   },
   {
     key: "updatedAt",
     header: "Updated",
-    width: proportional(1, { minWidth: 150 }),
+    width: proportional(1, { minWidth: UPDATED_MIN_WIDTH }),
     sortable: true,
     renderCell: (item) => (
       <Tooltip content={formatUpdatedFull(item.updatedAt)}>
@@ -183,6 +198,76 @@ function blank(id: string, marker: "placeholder" | "spacer"): Item {
   };
 }
 
+/**
+ * The column widths to draw: the ones the person set, and for the Lesson
+ * column, until they set it, the room the other columns leave in a table
+ * `width` wide (never below its floor), so it follows the window. Nothing
+ * here is kept: only a drag is.
+ */
+function fittedWidths(
+  widths: Record<string, number>,
+  width: number,
+): Record<string, number> {
+  if (widths.statement !== undefined || width <= 0) return widths;
+  const others =
+    (widths.kind ?? KIND_WIDTH) +
+    (widths.status ?? STATUS_WIDTH) +
+    (widths.polarity ?? POLARITY_WIDTH) +
+    (widths.transfer ?? TRANSFER_WIDTH) +
+    UPDATED_MIN_WIDTH;
+  return {
+    ...widths,
+    statement: Math.max(LESSON_MIN_WIDTH, Math.floor(width - others)),
+  };
+}
+
+/** What the column resizing reads of the columns: their keys and declared widths. */
+const COLUMN_SIZES: TableColumn<Record<string, unknown>>[] = COLUMNS.map(
+  ({ key, header, width }) => ({
+    key,
+    header,
+    width,
+  }),
+);
+
+/** Where the widths the person gave the columns are kept, in the webview's storage. */
+const COLUMN_WIDTHS_KEY = "lessons-table-widths";
+
+/**
+ * The column widths kept from the last time, by column key. Storage is a
+ * convenience: when it cannot be read, or holds something else, the columns
+ * take their declared widths.
+ */
+function readColumnWidths(): Record<string, number> {
+  try {
+    const kept: unknown = JSON.parse(
+      localStorage.getItem(COLUMN_WIDTHS_KEY) ?? "{}",
+    );
+    if (typeof kept !== "object" || kept === null) return {};
+    return Object.fromEntries(
+      Object.entries(kept).filter(
+        ([key, width]) =>
+          key !== "updatedAt" &&
+          COLUMNS.some((column) => column.key === key) &&
+          typeof width === "number" &&
+          Number.isFinite(width) &&
+          width > 0,
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
+
+/** Keeps the column widths for the next start; a failure only loses them. */
+function keepColumnWidths(widths: Record<string, number>) {
+  try {
+    localStorage.setItem(COLUMN_WIDTHS_KEY, JSON.stringify(widths));
+  } catch {
+    // Storage is blocked or full: the widths hold for this session only.
+  }
+}
+
 /** The Lessons of the Vault in a table that holds only the rows near the view. */
 export function LessonsTable({
   node,
@@ -205,6 +290,8 @@ export function LessonsTable({
   const [error, setError] = useState<string | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewport, setViewport] = useState(ESTIMATED_VIEWPORT);
+  // The width of the scroll container; 0 until it is measured.
+  const [width, setWidth] = useState(0);
   const [rowHeight, setRowHeight] = useState(ESTIMATED_ROW_HEIGHT);
 
   // Bumped by every sort or node change: an answer of an older one is ignored.
@@ -305,8 +392,12 @@ export function LessonsTable({
     scrollEl.current = el;
     if (!el) return;
     setViewport(el.clientHeight);
+    setWidth(el.clientWidth);
     setScrollTop(el.scrollTop);
-    const watcher = new ResizeObserver(() => setViewport(el.clientHeight));
+    const watcher = new ResizeObserver(() => {
+      setViewport(el.clientHeight);
+      setWidth(el.clientWidth);
+    });
     watcher.observe(el);
     observer.current = watcher;
   }, []);
@@ -335,6 +426,25 @@ export function LessonsTable({
       if (first && isSortKey(first.sortKey)) {
         changeSort({ sortKey: first.sortKey, direction: first.direction });
       }
+    },
+  });
+
+  // The person drags the column borders; the widths are kept for the next
+  // start.
+  const [columnWidths, setColumnWidths] =
+    useState<Record<string, number>>(readColumnWidths);
+  const columnResize = useTableColumnResize<Item>({
+    columns: COLUMN_SIZES,
+    columnWidths: fittedWidths(columnWidths, width),
+    onColumnResizeEnd: (updates) => {
+      // Updated, the last column, always takes the room left over: its width
+      // is never kept.
+      const { updatedAt: _remainder, ...kept } = updates;
+      setColumnWidths((widths) => {
+        const next = { ...widths, ...kept };
+        keepColumnWidths(next);
+        return next;
+      });
     },
   });
 
@@ -455,7 +565,7 @@ export function LessonsTable({
       density="compact"
       hasHover
       textOverflow="truncate"
-      plugins={{ sortable, windowing }}
+      plugins={{ sortable, columnResize, windowing }}
     />
   );
 }

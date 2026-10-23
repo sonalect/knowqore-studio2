@@ -228,9 +228,16 @@ function WriteDialog({
       width={720}
       padding={4}
     >
+      {/* The note the write carries (the contract's `LessonVersion.note`, as
+          the writer gave it) heads the dialog; a write without one is named
+          by its id. */}
       <DialogHeader
-        title={`Change in write ${change.shortId}`}
-        subtitle={formatUpdatedFull(change.at)}
+        title={change.writer.note || `Change in write ${change.shortId}`}
+        subtitle={
+          change.writer.note
+            ? `Write ${change.shortId} · ${formatUpdatedFull(change.at)}`
+            : formatUpdatedFull(change.at)
+        }
         onOpenChange={(open) => {
           if (!open) onClose();
         }}
