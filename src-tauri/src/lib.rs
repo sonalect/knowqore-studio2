@@ -28,6 +28,7 @@ pub fn run() {
             lessons::lesson_facets,
             lessons::lesson_tree,
             lessons::lessons_page,
+            lessons::reload_lessons,
             system_appearance::system_appearance,
             system_locale::system_locale,
             system_style::system_style,

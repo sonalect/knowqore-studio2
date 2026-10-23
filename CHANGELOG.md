@@ -9,6 +9,16 @@ While the major version is 0, a breaking change bumps the minor version.
 
 ### Added
 
+- A Refresh button and a select for how often to read the data again (every
+  5, 15, or 30 minutes, or Manual; 15 by default, remembered) sit in the title
+  bar (at the end of the Lessons header on macOS) while a workspace is open.
+  A refresh keeps the person's place: the table, sources tree, and filter
+  counts update in place, and the chosen source, filters, sort, folded
+  groups, scroll position, selected Lesson, and its open tab stay. The icon
+  spins while it runs; a failed refresh shows the store's words in the
+  button's tooltip and keeps the old data.
+- The Lesson shown in the details stays highlighted in the table while the
+  person works in the details.
 - Choosing a source in the tree groups the Lessons table by the next level
   below it (hosts under a kind, owners under a host, repositories under an
   owner). Each group has a header with its label and the number of Lessons

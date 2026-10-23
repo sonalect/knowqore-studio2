@@ -108,11 +108,14 @@ export function LessonsFilterBar({
   node,
   filters,
   total,
+  version,
   onChange,
 }: {
   node: string | null;
   filters: LessonFilters;
   total: number | null;
+  /** Moves when the data was read again: the counts are read again, the old ones stay until then. */
+  version: number;
   onChange: (filters: LessonFilters) => void;
 }) {
   // The facets with the node they were read for, so an answer for another
@@ -124,18 +127,20 @@ export function LessonsFilterBar({
 
   useEffect(() => {
     let current = true;
+    void version;
     lessonFacets(node).then(
       (facets) => {
         if (current) setRead({ node, facets });
       },
       () => {
-        if (current) setRead(null);
+        // A failed re-read for the same node leaves its counts.
+        if (current) setRead((was) => (was?.node === node ? was : null));
       },
     );
     return () => {
       current = false;
     };
-  }, [node]);
+  }, [node, version]);
 
   const counts = useMemo(() => {
     const byField = new Map<FilterField, Map<string, number>>();

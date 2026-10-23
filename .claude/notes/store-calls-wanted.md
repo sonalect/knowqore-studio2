@@ -27,6 +27,12 @@ only that module (owner, 23 October 2026).
    the number of distinct Lessons seen in it, so the tree needs no pass over
    the Lessons.
 
+4. **A cheap change signal**: for instance `Store.Head()` returning the id of
+   the latest write, polled when the window gains focus or every few seconds,
+   or a streaming `Store.Changes()`. With it the Refresh button and the
+   interval select in the title bar go, and Studio refreshes by itself
+   (`reload_lessons` stays as the way to do it).
+
 **Why:** a Vault already holds about 1,500 Lessons and grows; the buffer
 reads all of them before the first row shows.
 

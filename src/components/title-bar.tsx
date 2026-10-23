@@ -345,7 +345,14 @@ const DOUBLE_CLICK_MS = 500;
  * The title bar of the undecorated window: Windows 11 caption buttons on
  * Windows, Adwaita-style round buttons on Linux. macOS keeps its own.
  */
-export function TitleBar({ controls }: { controls: WindowControls }) {
+export function TitleBar({
+  controls,
+  trailing,
+}: {
+  controls: WindowControls;
+  /** The app's own controls, between the title and the window buttons at the end. */
+  trailing?: ReactNode;
+}) {
   const [maximized, setMaximized] = useState(false);
   const [snapHover, setSnapHover] = useState(false);
   const lastTitleClickAt = useRef(0);
@@ -369,7 +376,7 @@ export function TitleBar({ controls }: { controls: WindowControls }) {
         bar: area(bar),
         holes: Array.from(
           bar.querySelectorAll(
-            "button, a, input, select, textarea, [role='button']",
+            "button, a, input, select, textarea, [role='button'], [role='combobox']",
           ),
           area,
         ),
@@ -589,6 +596,7 @@ export function TitleBar({ controls }: { controls: WindowControls }) {
           {WINDOW_TITLE}
         </span>
       </div>
+      {trailing}
       {controls.end.length > 0 ? (
         <div {...group}>{controls.end.map(button)}</div>
       ) : null}

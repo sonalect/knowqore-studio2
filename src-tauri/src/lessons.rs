@@ -730,14 +730,19 @@ fn folded(text: &str) -> impl Iterator<Item = char> + '_ {
 }
 
 /// The Lessons of the open store, once read, with the store they were read
-/// from.
-#[derive(Default)]
-pub struct LessonsBuffer(Mutex<Option<(StoreRef, Lessons)>>);
+/// from (`S`; a test stands in for the store with a plain value).
+pub struct LessonsBuffer<S = StoreRef>(Mutex<Option<(S, Lessons)>>);
 
-impl LessonsBuffer {
+impl<S> Default for LessonsBuffer<S> {
+    fn default() -> Self {
+        Self(Mutex::new(None))
+    }
+}
+
+impl<S: PartialEq> LessonsBuffer<S> {
     /// What `answer` makes of the Lessons read from `store`, when they are
     /// read.
-    fn answer_of<T>(&self, store: &StoreRef, answer: &impl Fn(&mut Lessons) -> T) -> Option<T> {
+    fn answer_of<T>(&self, store: &S, answer: &impl Fn(&mut Lessons) -> T) -> Option<T> {
         let mut buffer = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         match buffer.as_mut() {
             Some((read_from, lessons)) if read_from == store => Some(answer(lessons)),
@@ -747,15 +752,17 @@ impl LessonsBuffer {
 
     /// Keeps the Lessons read from `store` in place of any others, and
     /// answers from them.
-    fn keep<T>(
-        &self,
-        store: StoreRef,
-        mut lessons: Lessons,
-        answer: &impl Fn(&mut Lessons) -> T,
-    ) -> T {
+    fn keep<T>(&self, store: S, mut lessons: Lessons, answer: &impl Fn(&mut Lessons) -> T) -> T {
         let result = answer(&mut lessons);
         *self.0.lock().unwrap_or_else(PoisonError::into_inner) = Some((store, lessons));
         result
+    }
+
+    /// Swaps in the Lessons freshly read from `store`, in one step: a page
+    /// asked before it is answered from the old rows, one asked after from
+    /// the new. The new rows start with no order and no cached sequence.
+    fn replace(&self, store: S, lessons: Lessons) {
+        *self.0.lock().unwrap_or_else(PoisonError::into_inner) = Some((store, lessons));
     }
 }
 
@@ -778,6 +785,27 @@ async fn answer_from<T>(
         .await
         .map_err(|error| error.to_string())?;
     Ok(buffer.keep(store, lessons, &answer))
+}
+
+/// Tauri command `reload_lessons`: reads the Lessons and containers of the
+/// open workspace's store anew and swaps them into the buffer when all are
+/// read. The lock is not held while they are read, so pages asked meanwhile
+/// are answered from the old rows. Returns when the new rows are in place.
+/// Fails with the store's error (its code first), leaving the old rows, and
+/// when no workspace is open.
+#[tauri::command]
+pub async fn reload_lessons(
+    open_store: State<'_, OpenStore>,
+    buffer: State<'_, LessonsBuffer>,
+) -> Result<(), String> {
+    let Some(store) = open_store.current() else {
+        return Err("No workspace is open.".to_owned());
+    };
+    let lessons = Lessons::read(&store)
+        .await
+        .map_err(|error| error.to_string())?;
+    buffer.replace(store, lessons);
+    Ok(())
 }
 
 /// Tauri command `lessons_page`: one sorted window of the Lessons of the open
@@ -872,7 +900,7 @@ pub async fn find_lesson(
 
 /// Registers the buffer of the Lessons' rows.
 pub fn manage(app: &AppHandle) {
-    app.manage(LessonsBuffer::default());
+    app.manage(LessonsBuffer::<StoreRef>::default());
 }
 
 #[cfg(test)]
@@ -882,8 +910,8 @@ mod tests {
     use knowqore_stores::{Lesson, Support};
 
     use super::{
-        FacetCount, FoundLesson, LessonFilters, LessonRow, LessonSortKey, Lessons, LessonsQuery,
-        MAX_PAGE_ROWS, PageItem, STATEMENT_CHARS, SortDirection, containers_of,
+        FacetCount, FoundLesson, LessonFilters, LessonRow, LessonSortKey, Lessons, LessonsBuffer,
+        LessonsQuery, MAX_PAGE_ROWS, PageItem, STATEMENT_CHARS, SortDirection, containers_of,
     };
 
     /// Rows seen in no container.
@@ -1277,6 +1305,38 @@ mod tests {
         assert_eq!(lessons.page(&filtered(Some("git:"), by("active"))).total, 5);
         assert_eq!(lessons.page(&filtered(None, by("retired"))).total, 1);
         assert_eq!(lessons.page(&filtered(None, by("candidate"))).total, 0);
+    }
+
+    #[test]
+    fn a_swap_replaces_the_rows_and_drops_the_caches() {
+        let buffer = LessonsBuffer::<u8>::default();
+        let newest = query(LessonSortKey::UpdatedAt, SortDirection::Descending);
+        let ids_now = |buffer: &LessonsBuffer<u8>, store: u8| {
+            buffer.answer_of(&store, &|lessons: &mut Lessons| ids(lessons, &newest))
+        };
+        assert_eq!(ids_now(&buffer, 1), None);
+        buffer.keep(1, fixture(), &|_: &mut Lessons| ());
+        assert_eq!(
+            ids_now(&buffer, 1),
+            Some(
+                vec!["l4", "l1", "l3", "l2"]
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect()
+            )
+        );
+        buffer.replace(
+            1,
+            bare(vec![row(
+                "l9",
+                "new",
+                "practice",
+                "2026-10-09T00:00:00.000Z",
+            )]),
+        );
+        assert_eq!(ids_now(&buffer, 1), Some(vec!["l9".to_owned()]));
+        // Rows read from another store are not answered for this one.
+        assert_eq!(ids_now(&buffer, 2), None);
     }
 
     fn counts(facets: &[FacetCount]) -> Vec<(&str, usize)> {

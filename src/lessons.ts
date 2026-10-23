@@ -373,3 +373,12 @@ export function lessonHistory(id: string): Promise<LessonHistory> {
 export function lessonWriteDiff(id: string, writeId: string): Promise<string> {
   return invoke<string>("lesson_write_diff", { id, writeId });
 }
+
+/**
+ * Reads the Lessons and containers from the store anew and swaps them in
+ * when all are read; the pages asked meanwhile come from the old rows. A
+ * failure rejects with the store's error as a string and leaves the old rows.
+ */
+export function reloadLessons(): Promise<void> {
+  return invoke<void>("reload_lessons");
+}

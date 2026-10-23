@@ -12,7 +12,7 @@ import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { Text } from "@astryxdesign/core/Text";
 import { X } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 // Swizzled: wraps a long line under its own indent (see the `Studio:` notes).
 import { CodeBlock } from "../components/astryx/CodeBlock";
 import {
@@ -175,15 +175,20 @@ const SLOW_READ_MS = 300;
  */
 export function LessonDetails({
   row,
+  version,
   onClose,
 }: {
   row: LessonRow;
+  /** Moves when the data was read again: the same Lesson is read again and keeps its tab. */
+  version: number;
   onClose: () => void;
 }) {
   const [shown, setShown] = useState<Shown | null>(null);
   const [isSlow, setIsSlow] = useState(false);
   // Every Lesson opens on Overview; the tab chosen holds while it is shown.
   const [tab, setTab] = useState<DetailsTab>("overview");
+  // The Lesson the tab belongs to: a read of the same Lesson again keeps it.
+  const tabOf = useRef<string | null>(null);
   const chooseTab = (value: string) =>
     setTab(
       value === "yaml" ? "yaml" : value === "history" ? "history" : "overview",
@@ -191,6 +196,7 @@ export function LessonDetails({
 
   useEffect(() => {
     const id = row.id;
+    void version;
     let current = true;
     setIsSlow(false);
     const slow = setTimeout(() => {
@@ -208,15 +214,19 @@ export function LessonDetails({
       if (!current) return;
       clearTimeout(slow);
       setIsSlow(false);
-      // With the new Lesson, not before: the Lesson still shown keeps its tab.
-      setTab("overview");
+      // With the new Lesson, not before: the Lesson still shown keeps its
+      // tab, and so does a read of the same Lesson again.
+      if (tabOf.current !== id) {
+        tabOf.current = id;
+        setTab("overview");
+      }
       setShown({ id, reading: record, history: past });
     });
     return () => {
       current = false;
       clearTimeout(slow);
     };
-  }, [row.id]);
+  }, [row.id, version]);
 
   const isCurrent = shown !== null && shown.id === row.id;
   let body: ReactNode;

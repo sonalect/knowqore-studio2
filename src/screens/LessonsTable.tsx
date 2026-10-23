@@ -207,8 +207,8 @@ const styles = stylex.create({
     paddingBlock: 0,
     paddingInline: spacingVars["--spacing-2"],
   },
-  selectedRow: {
-    boxShadow: `inset 0 0 0 100vmax ${colorVars["--color-accent-muted"]}`,
+  selectedCell: {
+    backgroundColor: colorVars["--color-accent-muted"],
   },
   height: (height: number) => ({ height }),
   error: {
@@ -313,7 +313,9 @@ export function LessonsTable({
   collapsed,
   onToggleGroup,
   onSelect,
+  onRefreshed,
   onTotal,
+  version,
 }: {
   node: string | null;
   filters: LessonFilters;
@@ -322,7 +324,15 @@ export function LessonsTable({
   onToggleGroup: (key: string) => void;
   selectedId: string | null;
   onSelect: (row: LessonRow) => void;
+  /** The selected Lesson as the latest answer holds it. */
+  onRefreshed: (row: LessonRow) => void;
   onTotal: (total: number) => void;
+  /**
+   * Moves when the data was read again: the blocks in view are fetched
+   * again and replace the old ones as they arrive, with no placeholders and
+   * no scrolling in between.
+   */
+  version: number;
 }) {
   const [sort, setSort] = useState<Sort>(DEFAULT_SORT);
   const [total, setTotal] = useState<number | null>(null);
@@ -338,6 +348,11 @@ export function LessonsTable({
 
   // Bumped by every sort or node change: an answer of an older one is ignored.
   const generation = useRef(0);
+  // The blocks of `loaded` already fetched for this generation; after a
+  // refresh the rest are the old rows, shown until their answer comes.
+  const fresh = useRef(new Set<number>());
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
   // `generation:block` of every call in flight.
   const inFlight = useRef(new Set<string>());
   // The blocks held, readable without being an effect dependency.
@@ -392,6 +407,7 @@ export function LessonsTable({
     shown.current = { node, filtersKey, collapsedKey };
     generation.current += 1;
     inFlight.current.clear();
+    fresh.current = new Set();
     loaded.current = new Map();
     setBlocks(loaded.current);
     setError(null);
@@ -401,10 +417,25 @@ export function LessonsTable({
     }
   }, [node, filtersKey, collapsedKey]);
 
+  // New data: a new generation that keeps the rows on screen. The effect
+  // below fetches the blocks in view again.
+  const shownVersion = useRef(version);
   useEffect(() => {
+    if (shownVersion.current === version) return;
+    shownVersion.current = version;
+    generation.current += 1;
+    inFlight.current.clear();
+    fresh.current = new Set();
+  }, [version]);
+
+  useEffect(() => {
+    void version;
     const pruned = new Map(
       [...loaded.current].filter(([block]) => block >= lo && block <= hi),
     );
+    for (const block of fresh.current) {
+      if (block < lo || block > hi) fresh.current.delete(block);
+    }
     if (pruned.size !== loaded.current.size) {
       loaded.current = pruned;
       setBlocks(pruned);
@@ -412,7 +443,7 @@ export function LessonsTable({
     const gen = generation.current;
     for (let block = lo; block <= hi; block += 1) {
       const key = `${gen}:${block}`;
-      if (loaded.current.has(block) || inFlight.current.has(key)) continue;
+      if (fresh.current.has(block) || inFlight.current.has(key)) continue;
       inFlight.current.add(key);
       lessonsPage({
         sortKey,
@@ -430,8 +461,25 @@ export function LessonsTable({
           setTotal(page.total);
           // The readout counts Lessons, not the rows and headers scrolled.
           onTotal(page.lessons);
+          const chosen = selectedIdRef.current;
+          if (chosen !== null) {
+            for (const item of page.items) {
+              if (item.type === "lesson" && item.id === chosen) {
+                onRefreshed({
+                  id: item.id,
+                  statement: item.statement,
+                  kind: item.kind,
+                  status: item.status,
+                  transfer: item.transfer,
+                  polarity: item.polarity,
+                  updatedAt: item.updatedAt,
+                });
+              }
+            }
+          }
           const { lo: nlo, hi: nhi } = needed.current;
           if (block < nlo || block > nhi) return;
+          fresh.current.add(block);
           const next = new Map(loaded.current);
           next.set(block, page.items);
           loaded.current = next;
@@ -452,6 +500,8 @@ export function LessonsTable({
     stableFilters,
     stableCollapsed,
     onTotal,
+    onRefreshed,
+    version,
   ]);
 
   const attachScroll = useCallback((el: HTMLDivElement | null) => {
@@ -479,6 +529,7 @@ export function LessonsTable({
   const changeSort = useCallback((next: Sort) => {
     generation.current += 1;
     inFlight.current.clear();
+    fresh.current = new Set();
     loaded.current = new Map();
     setBlocks(loaded.current);
     setError(null);
@@ -579,7 +630,11 @@ export function LessonsTable({
       transformBodyCell: (props, _column, item) =>
         item.marker || item.group
           ? { ...props, isContentSuppressed: true }
-          : props,
+          : item.id === selectedId
+            ? // The wash goes on the cells: WebKit does not paint a row's own
+              // background or inset shadow under cells that have theirs.
+              { ...props, xstyle: [...props.xstyle, styles.selectedCell] }
+            : props,
       transformBodyRow: (props, item) => {
         if (item.marker === "spacer") {
           const height =
@@ -646,11 +701,7 @@ export function LessonsTable({
         return {
           ...props,
           ref: props.ref ? composeRefs(props.ref, measureRow) : measureRow,
-          xstyle: [
-            ...props.xstyle,
-            styles.row,
-            isSelected && styles.selectedRow,
-          ],
+          xstyle: [...props.xstyle, styles.row],
           htmlProps: {
             ...props.htmlProps,
             "aria-selected": isSelected ? true : undefined,

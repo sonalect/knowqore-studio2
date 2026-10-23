@@ -9,8 +9,10 @@ import {
   useSystemAppearance,
   useSystemStyle,
 } from "./appearance";
+import { RefreshControls } from "./components/refresh-controls";
 import { TitleBar, type WindowControls } from "./components/title-bar";
 import { drawsOwnTitleBar } from "./platform";
+import { useRefresh } from "./refresh";
 import { LessonsScreen } from "./screens/LessonsScreen";
 import { OpenScreen } from "./screens/OpenScreen";
 import { openWorkspace, type WorkspaceStatus } from "./workspace";
@@ -90,6 +92,7 @@ function App({ windowControls }: { windowControls: WindowControls }) {
   const accent = appearance.accent || style.accent;
   // `null` while the workspace is being opened.
   const [workspace, setWorkspace] = useState<WorkspaceStatus | null>(null);
+  const refresh = useRefresh(workspace?.state === "open");
   const theme = useMemo(
     () => systemTheme(accent, style.font),
     [accent, style.font],
@@ -122,14 +125,23 @@ function App({ windowControls }: { windowControls: WindowControls }) {
   return (
     <Theme theme={theme} mode={appearance.dark ? "dark" : "light"}>
       <VStack gap={0} height="100svh">
-        {drawsOwnTitleBar ? <TitleBar controls={windowControls} /> : null}
+        {drawsOwnTitleBar ? (
+          <TitleBar
+            controls={windowControls}
+            trailing={
+              workspace?.state === "open" ? (
+                <RefreshControls refresh={refresh} />
+              ) : null
+            }
+          />
+        ) : null}
         <StackItem size="fill">
           {workspace === null ? (
             <Center height="100%">
               <Text color="secondary">Opening the workspace…</Text>
             </Center>
           ) : workspace.state === "open" ? (
-            <LessonsScreen workspace={workspace} />
+            <LessonsScreen workspace={workspace} refresh={refresh} />
           ) : (
             <OpenScreen status={workspace} onOpen={open} />
           )}

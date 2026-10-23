@@ -36,6 +36,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { RefreshControls } from "../components/refresh-controls";
 import {
   type LessonFilters,
   type LessonRow,
@@ -44,6 +45,8 @@ import {
   lessonTree,
   NO_FILTERS,
 } from "../lessons";
+import { drawsOwnTitleBar } from "../platform";
+import type { Refresh } from "../refresh";
 import type { OpenWorkspace } from "../workspace";
 import { LessonDetails } from "./LessonDetails";
 import { LessonsFilterBar } from "./LessonsFilterBar";
@@ -142,7 +145,15 @@ function DetailsPanel({
 }
 
 /** The Lessons of the open workspace: a tree, a table, and the details of the selected Lesson. */
-export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
+export function LessonsScreen({
+  workspace,
+  refresh,
+}: {
+  workspace: OpenWorkspace;
+  /** The data version moves when the data was read again: the screen keeps its place and shows the new data. */
+  refresh: Refresh;
+}) {
+  const version = refresh.version;
   const [selected, setSelected] = useState<LessonRow | null>(null);
   const [total, setTotal] = useState<number | null>(null);
   const [node, setNodeState] = useState<string | null>(null);
@@ -184,8 +195,39 @@ export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
   // The tree, or the reason it could not be read; `null` while pending.
   const [tree, setTree] = useState<LessonTree | string | null>(null);
 
+  // Read again when the data is: the tree on screen stays until the new one
+  // arrives, and a failed re-read leaves it.
   useEffect(() => {
-    lessonTree().then(setTree, (reason: unknown) => setTree(String(reason)));
+    let current = true;
+    void version;
+    lessonTree().then(
+      (read) => {
+        if (current) setTree(read);
+      },
+      (reason: unknown) => {
+        if (current)
+          setTree((was) =>
+            typeof was === "object" && was !== null ? was : String(reason),
+          );
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [version]);
+
+  // The selected Lesson as the table read it anew; the old row stays when
+  // the table does not hold the Lesson (or it did not change).
+  const refreshSelected = useCallback((row: LessonRow) => {
+    setSelected((was) =>
+      was !== null &&
+      was.id === row.id &&
+      (Object.keys(row) as (keyof LessonRow)[]).some(
+        (field) => was[field] !== row[field],
+      )
+        ? row
+        : was,
+    );
   }, []);
 
   const items = useMemo(
@@ -278,6 +320,11 @@ export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
               label="Lessons"
               size="sm"
               dividers={["bottom"]}
+              endContent={
+                drawsOwnTitleBar ? undefined : (
+                  <RefreshControls refresh={refresh} />
+                )
+              }
               startContent={
                 <Breadcrumbs label="Location">
                   <BreadcrumbItem onClick={() => setNode(null)}>
@@ -310,6 +357,7 @@ export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
                 node={node}
                 filters={filters}
                 total={total}
+                version={version}
                 onChange={setFilters}
               />
             </VStack>
@@ -327,6 +375,8 @@ export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
                     onToggleGroup={toggleGroup}
                     selectedId={selected?.id ?? null}
                     onSelect={setSelected}
+                    onRefreshed={refreshSelected}
+                    version={version}
                     onTotal={setTotal}
                   />
                 </Card>
@@ -337,7 +387,11 @@ export function LessonsScreen({ workspace }: { workspace: OpenWorkspace }) {
         end={
           selected ? (
             <DetailsPanel basis={tableAndDetails}>
-              <LessonDetails row={selected} onClose={() => setSelected(null)} />
+              <LessonDetails
+                row={selected}
+                version={version}
+                onClose={() => setSelected(null)}
+              />
             </DetailsPanel>
           ) : undefined
         }
